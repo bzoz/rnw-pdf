@@ -6,8 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-
-    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-    <TextBox x:Name="TextElement" Text="A sample text!"/>
-  </StackPanel>
+  <ScrollViewer Background="#505050">
+    <ItemsControl x:Name="Pages"/>
+  </ScrollViewer>
 </UserControl>

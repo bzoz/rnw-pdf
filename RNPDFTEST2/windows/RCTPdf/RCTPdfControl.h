@@ -31,6 +31,9 @@ namespace winrt::RCTPdf::implementation
           winrt::Microsoft::ReactNative::IJSValueReader const& commandArgsReader) noexcept;
     private:
         Microsoft::ReactNative::IReactContext m_reactContext{ nullptr };
+       
+        std::wstring m_pdfURI;
+
         void OnTextChanged(winrt::Windows::Foundation::IInspectable const& sender,
           winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const& args);
         winrt::Windows::UI::Xaml::Controls::TextBox::TextChanged_revoker m_textChangedRevoker{};

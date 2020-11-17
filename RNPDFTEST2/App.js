@@ -26,7 +26,7 @@ const App: () => React$Node = () => {
       <Text>Hello!</Text>
       <Text>Hello!</Text>
       <Text>Hello!</Text>
-      <RCTPdf sampleProp="elo elo" style={{width: 200, height:50}} />
+      <RCTPdf sampleProp="elo elo" style={{width: 800, height:900}} />
     </>
   );
 };

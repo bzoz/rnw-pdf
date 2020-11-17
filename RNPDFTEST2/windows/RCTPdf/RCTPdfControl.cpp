@@ -18,23 +18,25 @@ namespace winrt {
   using namespace Windows::UI::Xaml::Media;
 } // namespace winrt
 
+// C:\\Users\\ja\Desktop\\bod.pdf
+
 namespace winrt::RCTPdf::implementation
 {
     RCTPdfControl::RCTPdfControl(winrt::IReactContext const& reactContext) : m_reactContext(reactContext) {
         this->AllowFocusOnInteraction(true);
         InitializeComponent();
-        m_textChangedRevoker = TextElement().TextChanged(winrt::auto_revoke,
+        /*m_textChangedRevoker = TextElement().TextChanged(winrt::auto_revoke,
           [ref = get_weak()](auto const& sender, auto const& args) {
           if (auto self = ref.get()) {
             self->OnTextChanged(sender, args);
           }
-        });
+        });*/
     }
 
     void RCTPdfControl::OnTextChanged(winrt::Windows::Foundation::IInspectable const&,
       winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const&) {
       // TODO: example sending event on text changed
-      auto text = TextElement().Text();
+      /*auto text = TextElement().Text();
       m_reactContext.DispatchEvent(
         *this,
         L"sampleEvent",
@@ -43,7 +45,7 @@ namespace winrt::RCTPdf::implementation
           WriteProperty(eventDataWriter, L"text", text);
           eventDataWriter.WriteObjectEnd();
         }
-      );
+      );*/
     }
 
     winrt::Windows::Foundation::Collections::
@@ -51,7 +53,7 @@ namespace winrt::RCTPdf::implementation
       RCTPdfControl::NativeProps() noexcept {
       // TODO: define props here
       auto nativeProps = winrt::single_threaded_map<hstring, ViewManagerPropertyType>();
-      nativeProps.Insert(L"sampleProp", ViewManagerPropertyType::String);
+      nativeProps.Insert(L"path", ViewManagerPropertyType::String);
       return nativeProps.GetView();
     }
 
@@ -61,13 +63,13 @@ namespace winrt::RCTPdf::implementation
       for (auto const& pair : propertyMap) {
         auto const& propertyName = pair.first;
         auto const& propertyValue = pair.second;
-        if (propertyName == "sampleProp") {
+        if (propertyName == "path") {
           if (propertyValue != nullptr) {
             auto const& value = propertyValue.AsString();
-            TextElement().Text(winrt::to_hstring(value));
+            //TextElement().Text(winrt::to_hstring(value));
           }
           else {
-            TextElement().Text(L"");
+            //TextElement().Text(L"");
           }
         }
       }
@@ -95,7 +97,7 @@ namespace winrt::RCTPdf::implementation
       // TODO: handle commands here
       auto commandArgs = JSValue::ReadArrayFrom(commandArgsReader);
       if (commandId == L"sampleCommand") {
-        TextElement().Text(L"sampleCommand used!");
+        //TextElement().Text(L"sampleCommand used!");
       }
     }
 
