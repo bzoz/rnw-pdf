@@ -6,23 +6,27 @@
 
 using namespace winrt;
 using namespace Windows::UI::Xaml;
-namespace winrt {
-  using namespace Microsoft::ReactNative;
-  using namespace Windows::Data::Json;
-  using namespace Windows::Foundation;
-  using namespace Windows::UI;
-  using namespace Windows::UI::Popups;
-  using namespace Windows::UI::Xaml;
-  using namespace Windows::UI::Xaml::Controls;
-  using namespace Windows::UI::Xaml::Input;
-  using namespace Windows::UI::Xaml::Media;
-} // namespace winrt
+using namespace Microsoft::ReactNative;
+using namespace Windows::Data::Json;
+using namespace Windows::Data::Pdf;
+using namespace Windows::Foundation;
+using namespace Windows::Storage;
+using namespace Windows::Storage::Streams;
+using namespace Windows::Storage::Pickers;
+using namespace Windows::UI;
+using namespace Windows::UI::Core;
+using namespace Windows::UI::Popups;
+using namespace Windows::UI::Xaml;
+using namespace Windows::UI::Xaml::Controls;
+using namespace Windows::UI::Xaml::Input;
+using namespace Windows::UI::Xaml::Media;
+using namespace Windows::UI::Xaml::Media::Imaging;
 
 // C:\\Users\\ja\Desktop\\bod.pdf
 
 namespace winrt::RCTPdf::implementation
 {
-    RCTPdfControl::RCTPdfControl(winrt::IReactContext const& reactContext) : m_reactContext(reactContext) {
+    RCTPdfControl::RCTPdfControl(IReactContext const& reactContext) : m_reactContext(reactContext) {
         this->AllowFocusOnInteraction(true);
         InitializeComponent();
         /*m_textChangedRevoker = TextElement().TextChanged(winrt::auto_revoke,
@@ -80,7 +84,7 @@ namespace winrt::RCTPdf::implementation
     }
 
     winrt::Microsoft::ReactNative::ConstantProviderDelegate RCTPdfControl::ExportedCustomDirectEventTypeConstants() noexcept {
-      return [](winrt::IJSValueWriter const& constantWriter) {
+      return [](IJSValueWriter const& constantWriter) {
         // TODO: define events emitted by the control
         WriteCustomDirectEventTypeConstant(constantWriter, "sampleEvent");
       };
@@ -99,6 +103,12 @@ namespace winrt::RCTPdf::implementation
       if (commandId == L"sampleCommand") {
         //TextElement().Text(L"sampleCommand used!");
       }
+    }
+
+    winrt::fire_and_forget RCTPdfControl::loadPDF(std::wstring filename, std::wstring password) {
+      auto file = co_await StorageFile::GetFileFromPathAsync(filename);
+      auto document = co_await PdfDocument::LoadFromFileAsync(file, password);
+      Pages().Items().Clear();
     }
 
 }

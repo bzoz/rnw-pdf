@@ -32,6 +32,7 @@ namespace winrt::RCTPdf::implementation
     private:
         Microsoft::ReactNative::IReactContext m_reactContext{ nullptr };
        
+        winrt::fire_and_forget loadPDF(std::wstring filename, std::wstring password);
         std::wstring m_pdfURI;
 
         void OnTextChanged(winrt::Windows::Foundation::IInspectable const& sender,
