@@ -70,6 +70,7 @@ namespace winrt::RCTPdf::implementation
         if (propertyName == "path") {
           if (propertyValue != nullptr) {
             auto const& value = propertyValue.AsString();
+            loadPDF(value, "");
             //TextElement().Text(winrt::to_hstring(value));
           }
           else {
@@ -105,10 +106,26 @@ namespace winrt::RCTPdf::implementation
       }
     }
 
-    winrt::fire_and_forget RCTPdfControl::loadPDF(std::wstring filename, std::wstring password) {
-      auto file = co_await StorageFile::GetFileFromPathAsync(filename);
-      auto document = co_await PdfDocument::LoadFromFileAsync(file, password);
-      Pages().Items().Clear();
+    winrt::fire_and_forget RCTPdfControl::loadPDF(std::string filename, std::string password) {
+      auto lifetime = get_strong();
+      //auto file = co_await StorageFile::GetFileFromPathAsync(winrt::to_hstring(filename));
+      FileOpenPicker picker;
+
+      picker.FileTypeFilter().Append(L".pdf");
+      StorageFile file = co_await picker.PickSingleFileAsync();
+      auto document = co_await PdfDocument::LoadFromFileAsync(file, winrt::to_hstring(password));
+      auto items = Pages().Items();
+      items.Clear();
+      for (unsigned pageIdx = 0; pageIdx < document.PageCount(); ++pageIdx) {
+        auto page = document.GetPage(pageIdx);
+        InMemoryRandomAccessStream stream;
+        co_await page.RenderToStreamAsync(stream);
+        BitmapImage image;
+        co_await image.SetSourceAsync(stream);
+        Image pageImage;
+        pageImage.Source(image);
+        items.Append(pageImage);
+      }
     }
 
 }
