@@ -25,4 +25,5 @@
 #include <winrt/Microsoft.UI.Xaml.Media.h>
 #include <winrt/Microsoft.UI.Xaml.XamlTypeInfo.h>
 
+#include <winrt/Windows.Security.Authorization.AppCapabilityAccess.h>
 #include "winrt/RCTPdf.h"

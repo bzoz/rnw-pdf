@@ -13,6 +13,7 @@ using namespace Windows::UI::Xaml;
 using namespace Windows::UI::Xaml::Controls;
 using namespace Windows::UI::Xaml::Navigation;
 using namespace Windows::ApplicationModel;
+using namespace winrt::Windows::Security::Authorization::AppCapabilityAccess;
 
 /// <summary>
 /// Initializes the singleton application object.  This is the first line of
@@ -41,6 +42,10 @@ App::App() noexcept
 
     PackageProviders().Append(make<ReactPackageProvider>()); // Includes all modules in this project
     PackageProviders().Append(winrt::RCTPdf::ReactPackageProvider());
+
+    auto fsAccess = AppCapability::Create(L"broadFileSystemAccess");
+    fsAccess.RequestAccessAsync();
+
     InitializeComponent();
 }
 
