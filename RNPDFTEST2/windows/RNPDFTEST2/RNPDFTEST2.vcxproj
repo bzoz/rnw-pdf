@@ -160,6 +160,9 @@
     </Midl>
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\TestPDF.pdf">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
     <None Include="packages.config" />
     <None Include="PropertySheet.props" />
     <Text Include="readme.txt">

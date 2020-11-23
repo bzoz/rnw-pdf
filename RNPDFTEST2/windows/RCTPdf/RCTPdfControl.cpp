@@ -93,10 +93,8 @@ namespace winrt::RCTPdf::implementation
 
     winrt::fire_and_forget RCTPdfControl::loadPDF(std::string filename, std::string password) {
       auto lifetime = get_strong();
-      //auto file = co_await StorageFile::GetFileFromPathAsync(winrt::to_hstring(filename));
-      FileOpenPicker picker;
-      picker.FileTypeFilter().Append(L".pdf");
-      StorageFile file = co_await picker.PickSingleFileAsync();
+      auto uri = Uri(winrt::to_hstring(filename));
+      auto file = co_await StorageFile::GetFileFromApplicationUriAsync(uri);
       auto document = co_await PdfDocument::LoadFromFileAsync(file, winrt::to_hstring(password));
       auto items = Pages().Items();
       items.Clear();

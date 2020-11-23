@@ -26,7 +26,7 @@ const App: () => React$Node = () => {
       <Text>Hello!</Text>
       <Text>Hello!</Text>
       <Text>Hello!</Text>
-      <RCTPdf path="C:\Users\ja\Desktop\doc2.pdf" style={{width: 800, height:900}} />
+      <RCTPdf path="ms-appx:///TestPDF.pdf" style={{width: 800, height:900}} />
     </>
   );
 };

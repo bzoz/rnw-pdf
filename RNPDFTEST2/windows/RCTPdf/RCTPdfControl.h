@@ -36,8 +36,8 @@ namespace winrt::RCTPdf::implementation
         std::wstring m_pdfURI{};
         int m_currentPage = -1;
         int m_margins = 10;
-        double m_displayScale = 1; // scale at which we display the PDF
-        double m_renderedScale = 1; // scale at which the PDF was rendered
+        double m_displayScale = 0.7; // scale at which we display the PDF
+        double m_renderedScale = 0.7; // scale at which the PDF was rendered
         bool m_horizontal = false;
         std::vector<double> m_pageHeight, m_pageWidth;
        
