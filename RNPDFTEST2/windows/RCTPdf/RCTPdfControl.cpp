@@ -66,11 +66,12 @@ namespace winrt::RCTPdf::implementation
       double pageVisiblePixels = (pageSize[page] + m_margins * 2) * m_displayScale - offset;
       double viewCoveredByPage = pageVisiblePixels / viewSize;
       // ...and how much of the page is visible:
-      double pageVisiblePart = pageVisiblePixels / (pageSize[page] + m_margins * 2) * m_displayScale;
+      double pageVisiblePart = pageVisiblePixels / ((pageSize[page] + m_margins * 2) * m_displayScale);
       // If:
       //  - less than 50% of the screen is covered by the page
-      //  - less than 50% of the page is visible
-
+      //  - less than 50% of the page is visible (important if more than one page fits the screen)
+      //  - there is a next page
+      // move the indicator to that page:
       if (viewCoveredByPage < 0.5 && pageVisiblePart < 0.5 && page + 1 < pageSize.size()) {
         ++page;
       }
