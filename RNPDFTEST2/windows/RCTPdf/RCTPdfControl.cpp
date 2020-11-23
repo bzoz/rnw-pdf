@@ -35,12 +35,6 @@ namespace winrt::RCTPdf::implementation
             self->OnViewChanged(sender, args);
           }
         });
-        /*m_textChangedRevoker = TextElement().TextChanged(winrt::auto_revoke,
-          [ref = get_weak()](auto const& sender, auto const& args) {
-          if (auto self = ref.get()) {
-            self->OnTextChanged(sender, args);
-          }
-        });*/
     }
 
     void RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
@@ -80,21 +74,7 @@ namespace winrt::RCTPdf::implementation
         m_currentPage = page;
       }
     }
-    void RCTPdfControl::OnTextChanged(winrt::Windows::Foundation::IInspectable const&,
-      winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const&) {
-      // TODO: example sending event on text changed
-      /*auto text = TextElement().Text();
-      m_reactContext.DispatchEvent(
-        *this,
-        L"sampleEvent",
-        [&](winrt::Microsoft::ReactNative::IJSValueWriter const& eventDataWriter) noexcept {
-          eventDataWriter.WriteObjectBegin();
-          WriteProperty(eventDataWriter, L"text", text);
-          eventDataWriter.WriteObjectEnd();
-        }
-      );*/
-    }
-
+    
     winrt::Windows::Foundation::Collections::
       IMapView<winrt::hstring, winrt::Microsoft::ReactNative::ViewManagerPropertyType>
       RCTPdfControl::NativeProps() noexcept {

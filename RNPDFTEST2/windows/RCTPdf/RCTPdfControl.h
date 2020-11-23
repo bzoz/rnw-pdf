@@ -43,13 +43,9 @@ namespace winrt::RCTPdf::implementation
        
         winrt::fire_and_forget loadPDF(std::string filename, std::string password);
         
-
-        void OnTextChanged(winrt::Windows::Foundation::IInspectable const& sender,
-          winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const& args);
         void OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
           winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args);
         winrt::Windows::UI::Xaml::Controls::ScrollViewer::ViewChanged_revoker m_viewChangedRevoker{};
-        winrt::Windows::UI::Xaml::Controls::TextBox::TextChanged_revoker m_textChangedRevoker{};
     };
 }
 
