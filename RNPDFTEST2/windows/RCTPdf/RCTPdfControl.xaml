@@ -10,7 +10,7 @@
     <ItemsControl x:Name="Pages" HorizontalAlignment="Center">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
-          <StackPanel Orientation="Horizontal"/>
+          <StackPanel x:Name="OrientationSelector" Orientation="Vertical"/>
         </ItemsPanelTemplate>
       </ItemsControl.ItemsPanel>
     </ItemsControl>

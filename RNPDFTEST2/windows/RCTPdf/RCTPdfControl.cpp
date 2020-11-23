@@ -29,6 +29,12 @@ namespace winrt::RCTPdf::implementation
     RCTPdfControl::RCTPdfControl(IReactContext const& reactContext) : m_reactContext(reactContext) {
         this->AllowFocusOnInteraction(true);
         InitializeComponent();
+        m_viewChangedRevoker = PagesContainer().ViewChanged(winrt::auto_revoke,
+          [ref = get_weak()](auto const& sender, auto const& args) {
+          if (auto self = ref.get()) {
+            self->OnViewChanged(sender, args);
+          }
+        });
         /*m_textChangedRevoker = TextElement().TextChanged(winrt::auto_revoke,
           [ref = get_weak()](auto const& sender, auto const& args) {
           if (auto self = ref.get()) {
@@ -37,6 +43,42 @@ namespace winrt::RCTPdf::implementation
         });*/
     }
 
+    void RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
+      winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args) {
+      auto container = PagesContainer();
+      double offset = m_horizontal ? container.HorizontalOffset() : container.VerticalOffset();
+      double viewSize = m_horizontal ? container.ViewportWidth() : container.ViewportHeight();
+      const auto& pageSize = m_horizontal ? m_pageWidth : m_pageHeight;
+      // Do some sanity checks
+      if (viewSize == 0 || pageSize.empty()) {
+        return;
+      }
+      // Sum pages size until we reach our offset
+      int page = 0;
+      double pageEndOffset = 0;
+      while (page < pageSize.size() && pageEndOffset < offset) {
+        // Make sure we include both bottom and top margins
+        pageEndOffset += (pageSize[page++] + m_margins * 2) * m_displayScale;
+      }
+      if (page > 0)
+        --page;
+      // Bottom border of page #"page" is visible. Check how much of the view port this page covers...
+      double pageVisiblePixels = (pageSize[page] + m_margins * 2) * m_displayScale - offset;
+      double viewCoveredByPage = pageVisiblePixels / viewSize;
+      // ...and how much of the page is visible:
+      double pageVisiblePart = pageVisiblePixels / (pageSize[page] + m_margins * 2) * m_displayScale;
+      // If:
+      //  - less than 50% of the screen is covered by the page
+      //  - less than 50% of the page is visible
+
+      if (viewCoveredByPage < 0.5 && pageVisiblePart < 0.5 && page + 1 < pageSize.size()) {
+        ++page;
+      }
+      // TODO: how to trigger events?
+      if (page != m_currentPage) {
+        m_currentPage = page;
+      }
+    }
     void RCTPdfControl::OnTextChanged(winrt::Windows::Foundation::IInspectable const&,
       winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const&) {
       // TODO: example sending event on text changed
@@ -115,30 +157,30 @@ namespace winrt::RCTPdf::implementation
       auto document = co_await PdfDocument::LoadFromFileAsync(file, winrt::to_hstring(password));
       auto items = Pages().Items();
       items.Clear();
+      m_currentPage = 0;
+      m_pageWidth.clear();
+      m_pageHeight.clear();
       for (unsigned pageIdx = 0; pageIdx < document.PageCount(); ++pageIdx) {
         auto page = document.GetPage(pageIdx);
         auto dims = page.Size();
+        m_pageWidth.push_back(dims.Width);
+        m_pageHeight.push_back(dims.Height);
         InMemoryRandomAccessStream stream;
         PdfPageRenderOptions renderOptions;
-        renderOptions.DestinationHeight(dims.Height * 0.3);
-        renderOptions.DestinationWidth(dims.Width * 0.3);
+        renderOptions.DestinationHeight(dims.Height * m_renderedScale);
+        renderOptions.DestinationWidth(dims.Width * m_renderedScale);
         co_await page.RenderToStreamAsync(stream, renderOptions);
         BitmapImage image;
         co_await image.SetSourceAsync(stream);
         Image pageImage;
         pageImage.Source(image);
         pageImage.HorizontalAlignment(HorizontalAlignment::Center);
-        pageImage.Margin(ThicknessHelper::FromLengths(0, 10, 0, 10));
-        //pageImage.MinWidth(dims.Width*0.5);
-        //pageImage.MinHeight(dims.Height*0.5);
-        pageImage.Width(dims.Width * 0.3);
-        pageImage.Height(dims.Height * 0.3);
-        //pageImage.MaxWidth(dims.Width * 0.5);
-        //pageImage.MaxHeight(dims.Height * 0.5);
+        pageImage.Margin(ThicknessHelper::FromUniformLength(m_margins * m_displayScale));
+        pageImage.Width(dims.Width * m_displayScale);
+        pageImage.Height(dims.Height * m_displayScale);
         items.Append(pageImage);
       }
-      //Pages().Width(1060);
-      //Pages().Scale(Numerics::float3(0.5));
     }
 
 }
+

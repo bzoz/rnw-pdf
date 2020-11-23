@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include <vector>
 #include "winrt/Windows.UI.Xaml.h"
 #include "winrt/Windows.UI.Xaml.Markup.h"
 #include "winrt/Windows.UI.Xaml.Interop.h"
@@ -31,12 +32,23 @@ namespace winrt::RCTPdf::implementation
           winrt::Microsoft::ReactNative::IJSValueReader const& commandArgsReader) noexcept;
     private:
         Microsoft::ReactNative::IReactContext m_reactContext{ nullptr };
+
+        std::wstring m_pdfURI{};
+        int m_currentPage = -1;
+        int m_margins = 10;
+        double m_displayScale = 0.4; // scale at which we display the PDF
+        double m_renderedScale = 0.4; // scale at which the PDF was rendered
+        bool m_horizontal = false;
+        std::vector<double> m_pageHeight, m_pageWidth;
        
         winrt::fire_and_forget loadPDF(std::string filename, std::string password);
-        std::wstring m_pdfURI;
+        
 
         void OnTextChanged(winrt::Windows::Foundation::IInspectable const& sender,
           winrt::Windows::UI::Xaml::Controls::TextChangedEventArgs const& args);
+        void OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
+          winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args);
+        winrt::Windows::UI::Xaml::Controls::ScrollViewer::ViewChanged_revoker m_viewChangedRevoker{};
         winrt::Windows::UI::Xaml::Controls::TextBox::TextChanged_revoker m_textChangedRevoker{};
     };
 }
