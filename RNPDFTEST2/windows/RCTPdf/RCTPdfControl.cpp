@@ -27,54 +27,16 @@ using namespace Windows::UI::Xaml::Media::Imaging;
 namespace winrt::RCTPdf::implementation
 {
     RCTPdfControl::RCTPdfControl(IReactContext const& reactContext) : m_reactContext(reactContext) {
-        this->AllowFocusOnInteraction(true);
-        InitializeComponent();
-        m_viewChangedRevoker = PagesContainer().ViewChanged(winrt::auto_revoke,
-          [ref = get_weak()](auto const& sender, auto const& args) {
-          if (auto self = ref.get()) {
-            self->OnViewChanged(sender, args);
-          }
-        });
+      this->AllowFocusOnInteraction(true);
+      InitializeComponent();
+      m_viewChangedRevoker = PagesContainer().ViewChanged(winrt::auto_revoke,
+        [ref = get_weak()](auto const& sender, auto const& args) {
+        if (auto self = ref.get()) {
+          self->OnViewChanged(sender, args);
+        }
+      });
     }
 
-    void RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
-      winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args) {
-      auto container = PagesContainer();
-      double offset = m_horizontal ? container.HorizontalOffset() : container.VerticalOffset();
-      double viewSize = m_horizontal ? container.ViewportWidth() : container.ViewportHeight();
-      const auto& pageSize = m_horizontal ? m_pageWidth : m_pageHeight;
-      // Do some sanity checks
-      if (viewSize == 0 || pageSize.empty()) {
-        return;
-      }
-      // Sum pages size until we reach our offset
-      int page = 0;
-      double pageEndOffset = 0;
-      while (page < pageSize.size() && pageEndOffset < offset) {
-        // Make sure we include both bottom and top margins
-        pageEndOffset += (pageSize[page++] + m_margins * 2) * m_displayScale;
-      }
-      if (page > 0)
-        --page;
-      // Bottom border of page #"page" is visible. Check how much of the view port this page covers...
-      double pageVisiblePixels = (pageSize[page] + m_margins * 2) * m_displayScale - offset;
-      double viewCoveredByPage = pageVisiblePixels / viewSize;
-      // ...and how much of the page is visible:
-      double pageVisiblePart = pageVisiblePixels / ((pageSize[page] + m_margins * 2) * m_displayScale);
-      // If:
-      //  - less than 50% of the screen is covered by the page
-      //  - less than 50% of the page is visible (important if more than one page fits the screen)
-      //  - there is a next page
-      // move the indicator to that page:
-      if (viewCoveredByPage < 0.5 && pageVisiblePart < 0.5 && page + 1 < pageSize.size()) {
-        ++page;
-      }
-      // TODO: how to trigger events?
-      if (page != m_currentPage) {
-        m_currentPage = page;
-      }
-    }
-    
     winrt::Windows::Foundation::Collections::
       IMapView<winrt::hstring, winrt::Microsoft::ReactNative::ViewManagerPropertyType>
       RCTPdfControl::NativeProps() noexcept {
@@ -161,7 +123,62 @@ namespace winrt::RCTPdf::implementation
         pageImage.Height(dims.Height * m_displayScale);
         items.Append(pageImage);
       }
+      GoToPage(3);
     }
 
+    void RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
+      winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args) {
+      // TODO cache the scaled page sizes
+      auto container = PagesContainer();
+      double offset = m_horizontal ? container.HorizontalOffset() : container.VerticalOffset();
+      double viewSize = m_horizontal ? container.ViewportWidth() : container.ViewportHeight();
+      const auto& pageSize = m_horizontal ? m_pageWidth : m_pageHeight;
+      // Do some sanity checks
+      if (viewSize == 0 || pageSize.empty()) {
+        return;
+      }
+      // Sum pages size until we reach our offset
+      int page = 0;
+      double pageEndOffset = 0;
+      while (page < pageSize.size() && pageEndOffset < offset) {
+        // Make sure we include both bottom and top margins
+        pageEndOffset += (pageSize[page++] + m_margins * 2) * m_displayScale;
+      }
+      if (page > 0)
+        --page;
+      // Bottom border of page #"page" is visible. Check how much of the view port this page covers...
+      double pageVisiblePixels = (pageSize[page] + m_margins * 2) * m_displayScale - offset;
+      double viewCoveredByPage = pageVisiblePixels / viewSize;
+      // ...and how much of the page is visible:
+      double pageVisiblePart = pageVisiblePixels / ((pageSize[page] + m_margins * 2) * m_displayScale);
+      // If:
+      //  - less than 50% of the screen is covered by the page
+      //  - less than 50% of the page is visible (important if more than one page fits the screen)
+      //  - there is a next page
+      // move the indicator to that page:
+      if (viewCoveredByPage < 0.5 && pageVisiblePart < 0.5 && page + 1 < pageSize.size()) {
+        ++page;
+      }
+      // TODO: how to trigger events?
+      if (page != m_currentPage) {
+        m_currentPage = page;
+      }
+    }
+
+    void RCTPdfControl::GoToPage(int page) {
+      if (page < 0 || page > m_pageHeight.size()) {
+        return;
+      }
+      const auto& pageSize = m_horizontal ? m_pageWidth : m_pageHeight;
+      double neededOffset = 0;
+      for (int pageIdx = 0; pageIdx < page; ++pageIdx) {
+        neededOffset += pageSize[pageIdx] + m_margins * 2;
+      }
+      neededOffset *= m_displayScale;
+      double horizontalOffset = m_horizontal ? neededOffset : PagesContainer().HorizontalOffset();
+      double verticalOffset = m_horizontal ? PagesContainer().VerticalOffset() : neededOffset;
+      double zoomFactor = PagesContainer().ZoomFactor();
+      PagesContainer().ChangeView(horizontalOffset, verticalOffset, zoomFactor, false);
+    }
 }
 
