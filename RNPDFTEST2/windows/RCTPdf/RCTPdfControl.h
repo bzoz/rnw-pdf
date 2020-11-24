@@ -47,6 +47,7 @@ namespace winrt::RCTPdf::implementation
           winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args);
         winrt::Windows::UI::Xaml::Controls::ScrollViewer::ViewChanged_revoker m_viewChangedRevoker{};
         void GoToPage(int page);
+        void SignalError(const std::string& error);
     };
 }
 

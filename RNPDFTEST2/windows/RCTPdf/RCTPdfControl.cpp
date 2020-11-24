@@ -72,7 +72,7 @@ namespace winrt::RCTPdf::implementation
     winrt::Microsoft::ReactNative::ConstantProviderDelegate RCTPdfControl::ExportedCustomDirectEventTypeConstants() noexcept {
       return [](IJSValueWriter const& constantWriter) {
         // TODO: define events emitted by the control
-        WriteCustomDirectEventTypeConstant(constantWriter, "sampleEvent");
+        WriteCustomDirectEventTypeConstant(constantWriter, "onError");
       };
     }
 
@@ -122,6 +122,7 @@ namespace winrt::RCTPdf::implementation
         items.Append(pageImage);
       }
       GoToPage(3);
+      SignalError("Page loaded!");
     }
 
     void RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
@@ -177,6 +178,19 @@ namespace winrt::RCTPdf::implementation
       double verticalOffset = m_horizontal ? PagesContainer().VerticalOffset() : neededOffset;
       double zoomFactor = PagesContainer().ZoomFactor();
       PagesContainer().ChangeView(horizontalOffset, verticalOffset, zoomFactor, false);
+    }
+
+    void RCTPdfControl::SignalError(const std::string& error) {
+      m_reactContext.DispatchEvent(
+        *this,
+        L"topError",
+        [&](winrt::Microsoft::ReactNative::IJSValueWriter const& eventDataWriter) noexcept {
+          eventDataWriter.WriteObjectBegin();
+          {
+            WriteProperty(eventDataWriter, L"value", winrt::to_hstring(error));
+          }
+          eventDataWriter.WriteObjectEnd();
+        });
     }
 }
 
