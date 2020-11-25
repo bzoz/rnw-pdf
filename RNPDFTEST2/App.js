@@ -26,7 +26,7 @@ const App: () => React$Node = () => {
       <Text>Hello!</Text>
       <Text>Hello!</Text>
       <Text>Hello!</Text>
-      <RCTPdf path="ms-appx:///TestPDF.pdf" onError={(event) => { console.log(event.nativeEvent.value) }} style={{ width: 800, height: 900 }} />
+      <RCTPdf path="ms-appx:///TestPDF.pdf" page={4} onError={(event) => { console.log(event.nativeEvent.value) }} style={{ width: 800, height: 900 }} />
     </>
   );
 };

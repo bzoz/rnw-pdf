@@ -42,7 +42,7 @@ namespace winrt::RCTPdf::implementation
       RCTPdfControl::NativeProps() noexcept {
       auto nativeProps = winrt::single_threaded_map<hstring, ViewManagerPropertyType>();
       nativeProps.Insert(L"path", ViewManagerPropertyType::String);
-      // TODO: nativeProps.Insert(L"page", ViewManagerPropertyType::Number);
+      nativeProps.Insert(L"page", ViewManagerPropertyType::Number);
       // TODO: nativeProps.Insert(L"scale", ViewManagerPropertyType::Number);
       // TODO: nativeProps.Insert(L"minScale", ViewManagerPropertyType::Number);
       // TODO: nativeProps.Insert(L"maxScale", ViewManagerPropertyType::Number);
@@ -60,26 +60,24 @@ namespace winrt::RCTPdf::implementation
     }
 
     void RCTPdfControl::UpdateProperties(winrt::Microsoft::ReactNative::IJSValueReader const& propertyMapReader) noexcept {
-      // TODO: handle the props here
+      std::unique_lock lock(m_renderLock);
       const JSValueObject& propertyMap = JSValue::ReadObjectFrom(propertyMapReader);
+      m_pdfURI.clear();
+      m_pdfPassword.clear();
+      m_currentPage = 0;
       for (auto const& pair : propertyMap) {
         auto const& propertyName = pair.first;
         auto const& propertyValue = pair.second;
-        if (propertyName == "path" || propertyName == "password") {
-          if (propertyValue != nullptr) {
-            auto const& value = propertyValue.AsString();
-            if (auto password = propertyMap.find("password"); password != propertyMap.end()) {
-              loadPDF(value, password->second.AsString());
-            } else {
-              loadPDF(value, {});
-            }
-            //TextElement().Text(winrt::to_hstring(value));
-          }
-          else {
-            //TextElement().Text(L"");
-          }
+        if (propertyName == "path") {
+          m_pdfURI = propertyValue != nullptr ? propertyValue.AsString() : "";
+        } else if (propertyName == "password") {
+          m_pdfPassword = propertyValue != nullptr ? propertyValue.AsString() : "";
+        } else if (propertyName == "page") {
+          m_currentPage = propertyValue != nullptr ? propertyValue.AsInt32() - 1 : 0;
         }
+      
       }
+      loadPDF(std::move(lock));
     }
 
     winrt::Microsoft::ReactNative::ConstantProviderDelegate RCTPdfControl::ExportedCustomBubblingEventTypeConstants() noexcept {
@@ -109,21 +107,16 @@ namespace winrt::RCTPdf::implementation
       }
     }
 
-    winrt::fire_and_forget RCTPdfControl::loadPDF(std::string pdfURI, std::string pdfPassword) {
-      if (m_pdfURI == pdfURI && m_pdfPassword == pdfPassword) {
-        return;
-      }
-      m_pdfURI = pdfURI;
-      m_pdfPassword = pdfPassword;
+    winrt::fire_and_forget RCTPdfControl::loadPDF(std::unique_lock<std::mutex> lock) {
       auto lifetime = get_strong();
-      auto uri = Uri(winrt::to_hstring(pdfURI));
+      auto uri = Uri(winrt::to_hstring(m_pdfURI));
       auto file = co_await StorageFile::GetFileFromApplicationUriAsync(uri);
-      auto document = co_await PdfDocument::LoadFromFileAsync(file, winrt::to_hstring(pdfPassword));
+      auto document = co_await PdfDocument::LoadFromFileAsync(file, winrt::to_hstring(m_pdfPassword));
       auto items = Pages().Items();
       items.Clear();
-      m_currentPage = 0;
       m_pageWidth.clear();
       m_pageHeight.clear();
+      m_pages.clear();
       for (unsigned pageIdx = 0; pageIdx < document.PageCount(); ++pageIdx) {
         auto page = document.GetPage(pageIdx);
         auto dims = page.Size();
@@ -131,29 +124,38 @@ namespace winrt::RCTPdf::implementation
         m_pageHeight.push_back(dims.Height);
         InMemoryRandomAccessStream stream;
         PdfPageRenderOptions renderOptions;
-        renderOptions.DestinationHeight(dims.Height * m_renderedScale);
-        renderOptions.DestinationWidth(dims.Width * m_renderedScale);
+        renderOptions.DestinationHeight(static_cast<uint32_t>(dims.Height * m_scale));
+        renderOptions.DestinationWidth(static_cast<uint32_t>(dims.Width * m_scale));
         co_await page.RenderToStreamAsync(stream, renderOptions);
         BitmapImage image;
         co_await image.SetSourceAsync(stream);
         Image pageImage;
         pageImage.Source(image);
         pageImage.HorizontalAlignment(HorizontalAlignment::Center);
-        pageImage.Margin(ThicknessHelper::FromUniformLength(m_margins * m_displayScale));
-        pageImage.Width(dims.Width * m_displayScale);
-        pageImage.Height(dims.Height * m_displayScale);
+        pageImage.Margin(ThicknessHelper::FromUniformLength(m_margins * m_scale));
+        pageImage.Width(dims.Width * m_scale);
+        pageImage.Height(dims.Height * m_scale);
         items.Append(pageImage);
+        m_pages.push_back(pageImage);
+        SignalError("Curr Max: " + std::to_string(PagesContainer().ScrollableHeight()));
       }
-      GoToPage(1);
-      SignalError("Page loaded!");
+      lock.unlock();
+      GoToPage(m_currentPage);
     }
 
-    void RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
-      winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args) {
+    void RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const&,
+      winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const&) {
       // TODO cache the scaled page sizes
       auto container = PagesContainer();
       double offset = m_horizontal ? container.HorizontalOffset() : container.VerticalOffset();
-      SignalError(std::to_string(offset) + " of " + std::to_string(PagesContainer().ScrollableHeight()));
+      if (m_targetOffset != -1 && offset != m_targetOffset) {
+        // continue scrooling until we reach the target
+        double horizontalOffset = m_horizontal ? m_targetOffset : PagesContainer().HorizontalOffset();
+        double verticalOffset = m_horizontal ? PagesContainer().VerticalOffset() : m_targetOffset;
+        m_targetOffset = -1; // do this only once
+        PagesContainer().ChangeView(horizontalOffset, verticalOffset, nullptr, true);
+        return;
+      }
       double viewSize = m_horizontal ? container.ViewportWidth() : container.ViewportHeight();
       const auto& pageSize = m_horizontal ? m_pageWidth : m_pageHeight;
       // Do some sanity checks
@@ -163,23 +165,25 @@ namespace winrt::RCTPdf::implementation
       // Sum pages size until we reach our offset
       int page = 0;
       double pageEndOffset = 0;
-      while (page < pageSize.size() && pageEndOffset < offset) {
+      while (static_cast<std::size_t>(page) < pageSize.size() && pageEndOffset < offset) {
         // Make sure we include both bottom and top margins
-        pageEndOffset += (pageSize[page++] + m_margins * 2) * m_displayScale;
+        pageEndOffset += (pageSize[page++] + m_margins * 2) * m_scale;
       }
       if (page > 0)
         --page;
       // Bottom border of page #"page" is visible. Check how much of the view port this page covers...
-      double pageVisiblePixels = (pageSize[page] + m_margins * 2) * m_displayScale - offset;
+      double pageVisiblePixels = (pageSize[page] + m_margins * 2) * m_scale - offset;
       double viewCoveredByPage = pageVisiblePixels / viewSize;
       // ...and how much of the page is visible:
-      double pageVisiblePart = pageVisiblePixels / ((pageSize[page] + m_margins * 2) * m_displayScale);
+      double pageVisiblePart = pageVisiblePixels / ((pageSize[page] + m_margins * 2) * m_scale);
       // If:
       //  - less than 50% of the screen is covered by the page
       //  - less than 50% of the page is visible (important if more than one page fits the screen)
       //  - there is a next page
       // move the indicator to that page:
-      if (viewCoveredByPage < 0.5 && pageVisiblePart < 0.5 && page + 1 < pageSize.size()) {
+      if (viewCoveredByPage < 0.5 &&
+          pageVisiblePart < 0.5 &&
+          static_cast<std::size_t>(page + 1) < pageSize.size()) {
         ++page;
       }
       // TODO: how to trigger events?
@@ -189,7 +193,8 @@ namespace winrt::RCTPdf::implementation
     }
 
     void RCTPdfControl::GoToPage(int page) {
-      if (page < 0 || page > m_pageHeight.size()) {
+      std::scoped_lock lock(m_renderLock);
+      if (page < 0 || static_cast<std::size_t>(page) > m_pageHeight.size()) {
         return;
       }
       const auto& pageSize = m_horizontal ? m_pageWidth : m_pageHeight;
@@ -197,12 +202,13 @@ namespace winrt::RCTPdf::implementation
       for (int pageIdx = 0; pageIdx < page; ++pageIdx) {
         neededOffset += pageSize[pageIdx] + m_margins * 2;
       }
-      neededOffset *= m_displayScale;
+      neededOffset *= m_scale;
       //neededOffset -= 500;
       SignalError("Going to " + std::to_string(neededOffset));
       SignalError("Max: " + std::to_string(PagesContainer().ScrollableHeight()));
       double horizontalOffset = m_horizontal ? neededOffset : PagesContainer().HorizontalOffset();
       double verticalOffset = m_horizontal ? PagesContainer().VerticalOffset() : neededOffset;
+      m_targetOffset = neededOffset;
       PagesContainer().ChangeView(horizontalOffset, verticalOffset, nullptr, true);
     }
 
