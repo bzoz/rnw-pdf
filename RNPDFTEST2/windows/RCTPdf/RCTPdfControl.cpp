@@ -40,9 +40,22 @@ namespace winrt::RCTPdf::implementation
     winrt::Windows::Foundation::Collections::
       IMapView<winrt::hstring, winrt::Microsoft::ReactNative::ViewManagerPropertyType>
       RCTPdfControl::NativeProps() noexcept {
-      // TODO: define props here
       auto nativeProps = winrt::single_threaded_map<hstring, ViewManagerPropertyType>();
       nativeProps.Insert(L"path", ViewManagerPropertyType::String);
+      // TODO: nativeProps.Insert(L"page", ViewManagerPropertyType::Number);
+      // TODO: nativeProps.Insert(L"scale", ViewManagerPropertyType::Number);
+      // TODO: nativeProps.Insert(L"minScale", ViewManagerPropertyType::Number);
+      // TODO: nativeProps.Insert(L"maxScale", ViewManagerPropertyType::Number);
+      // TODO: nativeProps.Insert(L"horizontal", ViewManagerPropertyType::Boolean);
+      // TODO: nativeProps.Insert(L"fitWidth", ViewManagerPropertyType::Boolean);
+      // TODO: nativeProps.Insert(L"fitPolicy", ViewManagerPropertyType::Number);
+      // TODO: nativeProps.Insert(L"spacing", ViewManagerPropertyType::Number);
+      nativeProps.Insert(L"password", ViewManagerPropertyType::String);
+      // TODO: nativeProps.Insert(L"background", ViewManagerPropertyType::Color);
+      // TODO: nativeProps.Insert(L"enablePaging", ViewManagerPropertyType::Boolean);
+      // TODO: nativeProps.Insert(L"enableRTL", ViewManagerPropertyType::Boolean);
+      // TODO: nativeProps.Insert(L"singlePage", ViewManagerPropertyType::Boolean);
+
       return nativeProps.GetView();
     }
 
@@ -52,10 +65,14 @@ namespace winrt::RCTPdf::implementation
       for (auto const& pair : propertyMap) {
         auto const& propertyName = pair.first;
         auto const& propertyValue = pair.second;
-        if (propertyName == "path") {
+        if (propertyName == "path" || propertyName == "password") {
           if (propertyValue != nullptr) {
             auto const& value = propertyValue.AsString();
-            loadPDF(value, "");
+            if (auto password = propertyMap.find("password"); password != propertyMap.end()) {
+              loadPDF(value, password->second.AsString());
+            } else {
+              loadPDF(value, {});
+            }
             //TextElement().Text(winrt::to_hstring(value));
           }
           else {
@@ -71,15 +88,16 @@ namespace winrt::RCTPdf::implementation
 
     winrt::Microsoft::ReactNative::ConstantProviderDelegate RCTPdfControl::ExportedCustomDirectEventTypeConstants() noexcept {
       return [](IJSValueWriter const& constantWriter) {
-        // TODO: define events emitted by the control
+        // TODO: WriteCustomDirectEventTypeConstant(constantWriter, "onLoadComplete");
+        // TODO: WriteCustomDirectEventTypeConstant(constantWriter, "onPageChanged");
         WriteCustomDirectEventTypeConstant(constantWriter, "onError");
       };
     }
 
     winrt::Windows::Foundation::Collections::IVectorView<winrt::hstring> RCTPdfControl::Commands() noexcept {
-      // TODO: deifne commands supported by the control
       auto commands = winrt::single_threaded_vector<hstring>();
-      commands.Append(L"sampleCommand");
+      // TODO: commands.Append(L"setPage");
+      // TODO: commands.Append(L"setScale");
       return commands.GetView();
     }
 
@@ -91,11 +109,16 @@ namespace winrt::RCTPdf::implementation
       }
     }
 
-    winrt::fire_and_forget RCTPdfControl::loadPDF(std::string filename, std::string password) {
+    winrt::fire_and_forget RCTPdfControl::loadPDF(std::string pdfURI, std::string pdfPassword) {
+      if (m_pdfURI == pdfURI && m_pdfPassword == pdfPassword) {
+        return;
+      }
+      m_pdfURI = pdfURI;
+      m_pdfPassword = pdfPassword;
       auto lifetime = get_strong();
-      auto uri = Uri(winrt::to_hstring(filename));
+      auto uri = Uri(winrt::to_hstring(pdfURI));
       auto file = co_await StorageFile::GetFileFromApplicationUriAsync(uri);
-      auto document = co_await PdfDocument::LoadFromFileAsync(file, winrt::to_hstring(password));
+      auto document = co_await PdfDocument::LoadFromFileAsync(file, winrt::to_hstring(pdfPassword));
       auto items = Pages().Items();
       items.Clear();
       m_currentPage = 0;
@@ -121,7 +144,7 @@ namespace winrt::RCTPdf::implementation
         pageImage.Height(dims.Height * m_displayScale);
         items.Append(pageImage);
       }
-      GoToPage(3);
+      GoToPage(1);
       SignalError("Page loaded!");
     }
 
@@ -130,11 +153,12 @@ namespace winrt::RCTPdf::implementation
       // TODO cache the scaled page sizes
       auto container = PagesContainer();
       double offset = m_horizontal ? container.HorizontalOffset() : container.VerticalOffset();
+      SignalError(std::to_string(offset) + " of " + std::to_string(PagesContainer().ScrollableHeight()));
       double viewSize = m_horizontal ? container.ViewportWidth() : container.ViewportHeight();
       const auto& pageSize = m_horizontal ? m_pageWidth : m_pageHeight;
       // Do some sanity checks
       if (viewSize == 0 || pageSize.empty()) {
-        return;
+        return; 
       }
       // Sum pages size until we reach our offset
       int page = 0;
@@ -174,10 +198,12 @@ namespace winrt::RCTPdf::implementation
         neededOffset += pageSize[pageIdx] + m_margins * 2;
       }
       neededOffset *= m_displayScale;
+      //neededOffset -= 500;
+      SignalError("Going to " + std::to_string(neededOffset));
+      SignalError("Max: " + std::to_string(PagesContainer().ScrollableHeight()));
       double horizontalOffset = m_horizontal ? neededOffset : PagesContainer().HorizontalOffset();
       double verticalOffset = m_horizontal ? PagesContainer().VerticalOffset() : neededOffset;
-      double zoomFactor = PagesContainer().ZoomFactor();
-      PagesContainer().ChangeView(horizontalOffset, verticalOffset, zoomFactor, false);
+      PagesContainer().ChangeView(horizontalOffset, verticalOffset, nullptr, true);
     }
 
     void RCTPdfControl::SignalError(const std::string& error) {

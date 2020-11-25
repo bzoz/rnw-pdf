@@ -33,15 +33,16 @@ namespace winrt::RCTPdf::implementation
     private:
         Microsoft::ReactNative::IReactContext m_reactContext{ nullptr };
 
-        std::wstring m_pdfURI{};
+        std::string m_pdfURI;
+        std::string m_pdfPassword;
         int m_currentPage = -1;
         int m_margins = 10;
-        double m_displayScale = 0.7; // scale at which we display the PDF
-        double m_renderedScale = 0.7; // scale at which the PDF was rendered
+        double m_displayScale = 1; // scale at which we display the PDF
+        double m_renderedScale = 1; // scale at which the PDF was rendered
         bool m_horizontal = false;
         std::vector<double> m_pageHeight, m_pageWidth;
        
-        winrt::fire_and_forget loadPDF(std::string filename, std::string password);
+        winrt::fire_and_forget loadPDF(std::string pdfURI, std::string pdfPassword);
         
         void OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
           winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args);
