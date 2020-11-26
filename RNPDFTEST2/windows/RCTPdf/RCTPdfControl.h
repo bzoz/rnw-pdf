@@ -12,18 +12,21 @@
 namespace winrt::RCTPdf::implementation
 {
     struct PDFPageInfo {
-      PDFPageInfo(winrt::Windows::UI::Xaml::Controls::Image image, winrt::Windows::Data::Pdf::PdfPage page, double scale, double margin);
+      PDFPageInfo(winrt::Windows::UI::Xaml::Controls::Image image, winrt::Windows::Data::Pdf::PdfPage page, double imageScale, double renderScale);
       PDFPageInfo(const PDFPageInfo&) = default;
       PDFPageInfo(PDFPageInfo&&) = default;
       PDFPageInfo& operator=(const PDFPageInfo&) = default;
       PDFPageInfo& operator=(PDFPageInfo&&) = default;
+      double pageVisiblePixels(bool horizontal, double viewportStart, double viewportEnd) const;
+      double pageSize(bool horizontal) const;
       double height, width;
       double scaledHeight, scaledWidth;
       double scaledTopOffset, scaledLeftOffset;
-      double renderedScale;
+      double imageScale, renderScale;
       winrt::Windows::UI::Xaml::Controls::Image image;
       winrt::Windows::Data::Pdf::PdfPage page;
     };
+
     struct RCTPdfControl : RCTPdfControlT<RCTPdfControl>
     {
     public:
@@ -46,24 +49,36 @@ namespace winrt::RCTPdf::implementation
     private:
         Microsoft::ReactNative::IReactContext m_reactContext{ nullptr };
 
+        // Global lock to access the data stuff
+        // the pages are rendered in an async way
         std::mutex m_mutex;
-        winrt::Windows::Data::Pdf::PdfDocument m_document;
+        // "load index" - increse this every time we load a file so the page renderer task
+        // knows if its data is stil up to date
+        unsigned m_pdfLoadedIndex = 0;
+        // URI and password of the PDF
         std::string m_pdfURI;
         std::string m_pdfPassword;
+        // Current active page
         int m_currentPage = 0;
-        int m_targetOffset = -1;
+        // Margins of each page
         int m_margins = 10;
+        // Scale at which the PDF is displayed
         double m_scale = 1;
+        // Are we in "horizontal" mode?
         bool m_horizontal = false;
+        // Render the pages in reverse order
+        bool m_reverse = false;
 
         std::vector<PDFPageInfo> m_pages;
-       
+        void UpdatePagesInfoMarginOrScale();
+
         void OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
           winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args);
         winrt::Windows::UI::Xaml::Controls::ScrollViewer::ViewChanged_revoker m_viewChangedRevoker{};
 
         winrt::fire_and_forget LoadPDF(std::unique_lock<std::mutex> lock);
-        winrt::fire_and_forget UpadtePage(int page);
+        winrt::IAsyncAction UpadtePageRender(int page);
+        winrt::fire_and_forget UpdateMultiplePagesRender(int firstPage, int endPage);
         void GoToPage(int page);
         void SignalError(const std::string& error);
     };
