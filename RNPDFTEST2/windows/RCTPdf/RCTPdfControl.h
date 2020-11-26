@@ -11,6 +11,19 @@
 
 namespace winrt::RCTPdf::implementation
 {
+    struct PDFPageInfo {
+      PDFPageInfo(winrt::Windows::UI::Xaml::Controls::Image image, winrt::Windows::Data::Pdf::PdfPage page, double scale, double margin);
+      PDFPageInfo(const PDFPageInfo&) = default;
+      PDFPageInfo(PDFPageInfo&&) = default;
+      PDFPageInfo& operator=(const PDFPageInfo&) = default;
+      PDFPageInfo& operator=(PDFPageInfo&&) = default;
+      double height, width;
+      double scaledHeight, scaledWidth;
+      double scaledTopOffset, scaledLeftOffset;
+      double renderedScale;
+      winrt::Windows::UI::Xaml::Controls::Image image;
+      winrt::Windows::Data::Pdf::PdfPage page;
+    };
     struct RCTPdfControl : RCTPdfControlT<RCTPdfControl>
     {
     public:
@@ -33,7 +46,8 @@ namespace winrt::RCTPdf::implementation
     private:
         Microsoft::ReactNative::IReactContext m_reactContext{ nullptr };
 
-        std::mutex m_renderLock;
+        std::mutex m_mutex;
+        winrt::Windows::Data::Pdf::PdfDocument m_document;
         std::string m_pdfURI;
         std::string m_pdfPassword;
         int m_currentPage = 0;
@@ -41,14 +55,15 @@ namespace winrt::RCTPdf::implementation
         int m_margins = 10;
         double m_scale = 1;
         bool m_horizontal = false;
-        std::vector<double> m_pageHeight, m_pageWidth;
-        std::vector<winrt::Windows::UI::Xaml::Controls::Image> m_pages;
+
+        std::vector<PDFPageInfo> m_pages;
        
-        winrt::fire_and_forget loadPDF(std::unique_lock<std::mutex> lock);
-        
         void OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
           winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args);
         winrt::Windows::UI::Xaml::Controls::ScrollViewer::ViewChanged_revoker m_viewChangedRevoker{};
+
+        winrt::fire_and_forget LoadPDF(std::unique_lock<std::mutex> lock);
+        winrt::fire_and_forget UpadtePage(int page);
         void GoToPage(int page);
         void SignalError(const std::string& error);
     };
