@@ -107,6 +107,18 @@ namespace winrt::RCTPdf::implementation
       }
     }
 
+    static winrt::IAsyncOperation<BitmapImage> renderPDFPage(PdfPage& page, double scale) {
+      PdfPageRenderOptions renderOptions;
+      auto dims = page.Size();
+      renderOptions.DestinationHeight(static_cast<uint32_t>(dims.Height * scale));
+      renderOptions.DestinationWidth(static_cast<uint32_t>(dims.Width * scale));
+      InMemoryRandomAccessStream stream;
+      co_await page.RenderToStreamAsync(stream, renderOptions);
+      BitmapImage image;
+      co_await image.SetSourceAsync(stream);
+      return image;
+    }
+
     winrt::fire_and_forget RCTPdfControl::loadPDF(std::unique_lock<std::mutex> lock) {
       auto lifetime = get_strong();
       auto uri = Uri(winrt::to_hstring(m_pdfURI));
@@ -117,11 +129,42 @@ namespace winrt::RCTPdf::implementation
       m_pageWidth.clear();
       m_pageHeight.clear();
       m_pages.clear();
+      double totalHeigh = 0;
+      double targetOffset = 0;
+      for (unsigned pageIdx = 0; pageIdx < document.PageCount(); ++pageIdx) {
+        if (pageIdx == m_currentPage) {
+          targetOffset = totalHeigh;
+        }
+        auto page = document.GetPage(pageIdx);
+        auto dims = page.Size();
+        totalHeigh += dims.Height + 2*m_margins; 
+      }
       for (unsigned pageIdx = 0; pageIdx < document.PageCount(); ++pageIdx) {
         auto page = document.GetPage(pageIdx);
         auto dims = page.Size();
         m_pageWidth.push_back(dims.Width);
         m_pageHeight.push_back(dims.Height);
+        /*InMemoryRandomAccessStream stream;
+        PdfPageRenderOptions renderOptions;
+        renderOptions.DestinationHeight(static_cast<uint32_t>(dims.Height * m_scale));
+        renderOptions.DestinationWidth(static_cast<uint32_t>(dims.Width * m_scale));
+        co_await page.RenderToStreamAsync(stream, renderOptions);
+        BitmapImage image;
+        co_await image.SetSourceAsync(stream);*/
+        Image pageImage;
+        //pageImage.Source(image);
+        pageImage.HorizontalAlignment(HorizontalAlignment::Center);
+        pageImage.Margin(ThicknessHelper::FromUniformLength(m_margins * m_scale));
+        pageImage.Width(dims.Width * m_scale);
+        pageImage.Height(dims.Height * m_scale);
+        items.Append(pageImage);
+        m_pages.push_back(pageImage);
+      }
+      m_pages[m_currentPage].Source(co_await renderPDFPage(document.GetPage(m_currentPage), m_scale));
+      PagesContainer().ChangeView(0.0, targetOffset, nullptr, true);
+      for (unsigned pageIdx = 0; pageIdx < document.PageCount(); ++pageIdx) {
+        auto page = document.GetPage(pageIdx);
+        auto dims = page.Size();
         InMemoryRandomAccessStream stream;
         PdfPageRenderOptions renderOptions;
         renderOptions.DestinationHeight(static_cast<uint32_t>(dims.Height * m_scale));
@@ -129,18 +172,9 @@ namespace winrt::RCTPdf::implementation
         co_await page.RenderToStreamAsync(stream, renderOptions);
         BitmapImage image;
         co_await image.SetSourceAsync(stream);
-        Image pageImage;
-        pageImage.Source(image);
-        pageImage.HorizontalAlignment(HorizontalAlignment::Center);
-        pageImage.Margin(ThicknessHelper::FromUniformLength(m_margins * m_scale));
-        pageImage.Width(dims.Width * m_scale);
-        pageImage.Height(dims.Height * m_scale);
-        items.Append(pageImage);
-        m_pages.push_back(pageImage);
-        SignalError("Curr Max: " + std::to_string(PagesContainer().ScrollableHeight()));
+        m_pages[pageIdx].Source(image);
       }
       lock.unlock();
-      GoToPage(m_currentPage);
     }
 
     void RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const&,

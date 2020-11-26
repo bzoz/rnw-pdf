@@ -39,7 +39,7 @@ namespace winrt::RCTPdf::implementation
         int m_currentPage = 0;
         int m_targetOffset = -1;
         int m_margins = 10;
-        double m_scale = 3;
+        double m_scale = 1;
         bool m_horizontal = false;
         std::vector<double> m_pageHeight, m_pageWidth;
         std::vector<winrt::Windows::UI::Xaml::Controls::Image> m_pages;
