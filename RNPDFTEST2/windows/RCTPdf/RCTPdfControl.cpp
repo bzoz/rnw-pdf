@@ -52,9 +52,30 @@ namespace winrt::RCTPdf::implementation
     }
     return 0;
   }
+  
   double PDFPageInfo::pageSize(bool horizontal) const {
     return horizontal ? scaledWidth : scaledHeight;
   }
+
+  bool PDFPageInfo::needsRender() const {
+    return renderScale < imageScale || renderScale > imageScale * 2;
+  }
+
+  winrt::IAsyncAction PDFPageInfo::render() {
+    if (!needsRender())
+      co_return;
+    renderScale = imageScale;
+    PdfPageRenderOptions renderOptions;
+    auto dims = page.Size();
+    renderOptions.DestinationHeight(static_cast<uint32_t>(dims.Height * imageScale));
+    renderOptions.DestinationWidth(static_cast<uint32_t>(dims.Width * imageScale));
+    InMemoryRandomAccessStream stream;
+    co_await page.RenderToStreamAsync(stream, renderOptions);
+    BitmapImage bitmap;
+    co_await bitmap.SetSourceAsync(stream);
+    image.Source(bitmap);
+  }
+  
 
   RCTPdfControl::RCTPdfControl(IReactContext const& reactContext) : m_reactContext(reactContext) {
     this->AllowFocusOnInteraction(true);
@@ -90,7 +111,7 @@ namespace winrt::RCTPdf::implementation
   }
 
   void RCTPdfControl::UpdateProperties(winrt::Microsoft::ReactNative::IJSValueReader const& propertyMapReader) noexcept {
-    std::unique_lock lock(m_mutex);
+    std::unique_lock lock(m_rwlock);
     const JSValueObject& propertyMap = JSValue::ReadObjectFrom(propertyMapReader);
     std::string pdfURI;
     std::string pdfPassword;
@@ -143,18 +164,6 @@ namespace winrt::RCTPdf::implementation
     }
   }
 
-  static winrt::IAsyncOperation<BitmapImage> renderPDFPage(PdfPage page, double scale) {
-    PdfPageRenderOptions renderOptions;
-    auto dims = page.Size();
-    renderOptions.DestinationHeight(static_cast<uint32_t>(dims.Height * scale));
-    renderOptions.DestinationWidth(static_cast<uint32_t>(dims.Width * scale));
-    InMemoryRandomAccessStream stream;
-    co_await page.RenderToStreamAsync(stream, renderOptions);
-    BitmapImage image;
-    co_await image.SetSourceAsync(stream);
-    return image;
-  }
-
   void RCTPdfControl::UpdatePagesInfoMarginOrScale() {
     for (auto& page : m_pages) {
       page.imageScale = m_scale;
@@ -183,36 +192,8 @@ namespace winrt::RCTPdf::implementation
     }
   }
 
-  winrt::IAsyncAction RCTPdfControl::UpadtePageRender(int page) {
-    auto& pageInfo = m_pages[page];
-    pageInfo.renderScale = m_scale;
-    if (m_pages[page].renderScale > m_scale && m_pages[page].renderScale < m_scale * 0.5)
-      co_return;
-    pageInfo.image.Source(co_await renderPDFPage(pageInfo.page, m_scale));
-  }
-
-  winrt::fire_and_forget RCTPdfControl::UpdateMultiplePagesRender(int firstPage, int endPage) {
-    std::unique_lock lock(m_mutex);
-    auto currentLoadIndex = m_pdfLoadedIndex;
-    for (unsigned page = firstPage; page < endPage && page < m_pages.size(); ++page) {
-      // Upscale always, downscale if over 50%
-      if (m_pages[page].renderScale > m_scale && m_pages[page].renderScale < m_scale * 0.5)
-        continue;
-      auto pdfPage = m_pages[page].page;
-      auto scale = m_scale;
-      lock.unlock();
-      auto bitmap = co_await renderPDFPage(pdfPage, scale);
-      lock.lock();
-      if (currentLoadIndex != m_pdfLoadedIndex || scale != m_scale)
-        co_return;
-      m_pages[page].renderScale = scale;
-      m_pages[page].image.Source(bitmap);
-    }
-  }
-
-  winrt::fire_and_forget RCTPdfControl::LoadPDF(std::unique_lock<std::mutex> lock) {
+  winrt::fire_and_forget RCTPdfControl::LoadPDF(std::unique_lock<std::shared_mutex> lock) {
     auto lifetime = get_strong();
-    ++m_pdfLoadedIndex;
     auto uri = Uri(winrt::to_hstring(m_pdfURI));
     auto file = co_await StorageFile::GetFileFromApplicationUriAsync(uri);
     auto document = co_await PdfDocument::LoadFromFileAsync(file, winrt::to_hstring(m_pdfPassword));
@@ -234,16 +215,19 @@ namespace winrt::RCTPdf::implementation
         items.Append(m_pages[page].image);
     }
     UpdatePagesInfoMarginOrScale();
-    co_await UpadtePageRender(m_currentPage);
-    GoToPage(m_currentPage);
-    auto pagesCount = m_pages.size();
-    lock.unlock();
-    UpdateMultiplePagesRender(0, pagesCount);
+    if (m_currentPage < 0)
+      m_currentPage = 0;
+    if (m_currentPage < m_pages.size()) {
+      co_await m_pages[m_currentPage].render();
+      GoToPage(m_currentPage);
+    }
   }
 
-  void RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const&,
+  winrt::fire_and_forget RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const&,
     winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const&) {
-    std::unique_lock lock(m_mutex);
+    std::shared_lock lock(m_rwlock, std::defer_lock);
+    if (!lock.try_lock())
+      return;
     auto container = PagesContainer();
     double offsetStart = m_horizontal ? container.HorizontalOffset() : container.VerticalOffset();
     double viewSize = m_horizontal ? container.ViewportWidth() : container.ViewportHeight();
@@ -275,17 +259,34 @@ namespace winrt::RCTPdf::implementation
         ++page;
       }
     }
-    // Render all visible pages
-    auto firstPage = page;
-    auto lastPage = page + 1;
-    while (firstPage >= 0 && m_pages[firstPage].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd) > 0)
-      --firstPage;
-    if (firstPage < 0)
-      firstPage = 0;
-    while (lastPage < m_pages.size() && m_pages[lastPage].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd) > 0)
-      ++lastPage;
+    // Render all visible pages - first the curent one, then the next visible ones and one
+    // more, then the one before that might be partly visible, then one more before
+    if (m_pages[page].needsRender()) {
+      SignalError("Rendering " + std::to_string(page + 1));
+      co_await m_pages[page].render();
+    }
+    auto pageToRender = page + 1;
+    while (pageToRender < m_pages.size() &&
+           m_pages[pageToRender].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd) > 0) {
+      if (m_pages[pageToRender].needsRender()) {
+        SignalError("Rendering " + std::to_string(pageToRender + 1));
+        co_await m_pages[++pageToRender].render();
+      }
+    }
+    if (pageToRender < m_pages.size() && m_pages[pageToRender].needsRender()) {
+      SignalError("Rendering " + std::to_string(pageToRender + 1));
+      co_await m_pages[pageToRender].render();
+    }
+    if (page >= 1 && m_pages[page - 1].needsRender()) {
+      SignalError("Rendering " + std::to_string(page));
+      co_await m_pages[page - 1].render();
+    }
+    if (page >= 2 && m_pages[page - 2].needsRender()) {
+      SignalError("Rendering " + std::to_string(page -1));
+      co_await m_pages[page - 2].render();
+    }
     if (page != m_currentPage) {
-      m_currentPage = page ;
+      m_currentPage = page;
       m_reactContext.DispatchEvent(
         *this,
         L"topPageChanged",
@@ -297,9 +298,6 @@ namespace winrt::RCTPdf::implementation
           eventDataWriter.WriteObjectEnd();
         });
     }
-    SignalError("Current page: " + std::to_string(page + 1) + ". Will render pages " + std::to_string(firstPage + 1) + " to " + std::to_string(lastPage + 1));
-    lock.unlock();
-    UpdateMultiplePagesRender(firstPage, lastPage);
   }
 
   void RCTPdfControl::GoToPage(int page) {

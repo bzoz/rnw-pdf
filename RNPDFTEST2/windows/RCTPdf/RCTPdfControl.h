@@ -19,6 +19,8 @@ namespace winrt::RCTPdf::implementation
       PDFPageInfo& operator=(PDFPageInfo&&) = default;
       double pageVisiblePixels(bool horizontal, double viewportStart, double viewportEnd) const;
       double pageSize(bool horizontal) const;
+      bool needsRender() const;
+      winrt::IAsyncAction render();
       double height, width;
       double scaledHeight, scaledWidth;
       double scaledTopOffset, scaledLeftOffset;
@@ -51,10 +53,7 @@ namespace winrt::RCTPdf::implementation
 
         // Global lock to access the data stuff
         // the pages are rendered in an async way
-        std::mutex m_mutex;
-        // "load index" - increse this every time we load a file so the page renderer task
-        // knows if its data is stil up to date
-        unsigned m_pdfLoadedIndex = 0;
+        std::shared_mutex m_rwlock;
         // URI and password of the PDF
         std::string m_pdfURI;
         std::string m_pdfPassword;
@@ -72,13 +71,11 @@ namespace winrt::RCTPdf::implementation
         std::vector<PDFPageInfo> m_pages;
         void UpdatePagesInfoMarginOrScale();
 
-        void OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
+        winrt::fire_and_forget OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
           winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args);
         winrt::Windows::UI::Xaml::Controls::ScrollViewer::ViewChanged_revoker m_viewChangedRevoker{};
 
-        winrt::fire_and_forget LoadPDF(std::unique_lock<std::mutex> lock);
-        winrt::IAsyncAction UpadtePageRender(int page);
-        winrt::fire_and_forget UpdateMultiplePagesRender(int firstPage, int endPage);
+        winrt::fire_and_forget LoadPDF(std::unique_lock<std::shared_mutex> lock);
         void GoToPage(int page);
         void SignalError(const std::string& error);
     };
