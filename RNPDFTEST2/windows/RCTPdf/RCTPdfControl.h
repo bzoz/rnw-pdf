@@ -13,18 +13,19 @@ namespace winrt::RCTPdf::implementation
 {
     struct PDFPageInfo {
       PDFPageInfo(winrt::Windows::UI::Xaml::Controls::Image image, winrt::Windows::Data::Pdf::PdfPage page, double imageScale, double renderScale);
-      PDFPageInfo(const PDFPageInfo&) = default;
-      PDFPageInfo(PDFPageInfo&&) = default;
-      PDFPageInfo& operator=(const PDFPageInfo&) = default;
-      PDFPageInfo& operator=(PDFPageInfo&&) = default;
+      PDFPageInfo(const PDFPageInfo&);
+      PDFPageInfo(PDFPageInfo&&);
       double pageVisiblePixels(bool horizontal, double viewportStart, double viewportEnd) const;
       double pageSize(bool horizontal) const;
       bool needsRender() const;
       winrt::IAsyncAction render();
+      winrt::IAsyncAction render(double useScale);
       double height, width;
       double scaledHeight, scaledWidth;
       double scaledTopOffset, scaledLeftOffset;
-      double imageScale, renderScale;
+      double imageScale; // scale at which the image is displayed
+      // Multiple taks can update the image, use the render scale as the sync point
+      std::atomic<double> renderScale; // scale at which the image is rendered
       winrt::Windows::UI::Xaml::Controls::Image image;
       winrt::Windows::Data::Pdf::PdfPage page;
     };
@@ -64,7 +65,7 @@ namespace winrt::RCTPdf::implementation
         // Scale at which the PDF is displayed
         double m_scale = 1;
         // Are we in "horizontal" mode?
-        bool m_horizontal = false;
+        bool m_horizontal = true;
         // Render the pages in reverse order
         bool m_reverse = false;
 

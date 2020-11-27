@@ -34,6 +34,17 @@ namespace winrt::RCTPdf::implementation
     scaledHeight = height * imageScale;
     scaledWidth = width * imageScale;
   }
+  PDFPageInfo::PDFPageInfo(const PDFPageInfo& rhs) :
+    height(rhs.height), width(rhs.width), scaledHeight(rhs.scaledHeight), scaledWidth(rhs.scaledWidth),
+    scaledTopOffset(rhs.scaledTopOffset), scaledLeftOffset(rhs.scaledTopOffset), imageScale(rhs.imageScale),
+    renderScale((double)rhs.renderScale), image(rhs.image), page(rhs.page)
+  { }
+
+  PDFPageInfo::PDFPageInfo(PDFPageInfo&& rhs) :
+    height(rhs.height), width(rhs.width), scaledHeight(rhs.scaledHeight), scaledWidth(rhs.scaledWidth),
+    scaledTopOffset(rhs.scaledTopOffset), scaledLeftOffset(rhs.scaledTopOffset), imageScale(rhs.imageScale),
+    renderScale((double)rhs.renderScale), image(std::move(rhs.image)), page(std::move(rhs.page))
+  { }
 
   double PDFPageInfo::pageVisiblePixels(bool horizontal, double viewportStart, double viewportEnd) const {
     if (viewportEnd < viewportStart)
@@ -58,22 +69,33 @@ namespace winrt::RCTPdf::implementation
   }
 
   bool PDFPageInfo::needsRender() const {
-    return renderScale < imageScale || renderScale > imageScale * 2;
+    double currentRenderScale = renderScale;
+    return currentRenderScale < imageScale || currentRenderScale > imageScale * 2;
   }
 
   winrt::IAsyncAction PDFPageInfo::render() {
-    if (!needsRender())
-      co_return;
-    renderScale = imageScale;
+    return render(imageScale);
+  }
+
+  winrt::IAsyncAction PDFPageInfo::render(double useScale) {
+    double currentRenderScale;
+    while (true) {
+      currentRenderScale = renderScale;
+      if (!(currentRenderScale < imageScale || currentRenderScale > imageScale * 2))
+        co_return;
+      if (renderScale.compare_exchange_weak(currentRenderScale, useScale))
+        break;
+    }
     PdfPageRenderOptions renderOptions;
     auto dims = page.Size();
-    renderOptions.DestinationHeight(static_cast<uint32_t>(dims.Height * imageScale));
-    renderOptions.DestinationWidth(static_cast<uint32_t>(dims.Width * imageScale));
+    renderOptions.DestinationHeight(static_cast<uint32_t>(dims.Height * useScale));
+    renderOptions.DestinationWidth(static_cast<uint32_t>(dims.Width * useScale));
     InMemoryRandomAccessStream stream;
     co_await page.RenderToStreamAsync(stream, renderOptions);
     BitmapImage bitmap;
     co_await bitmap.SetSourceAsync(stream);
-    image.Source(bitmap);
+    if (renderScale == useScale)
+      image.Source(bitmap);
   }
   
 
@@ -200,6 +222,10 @@ namespace winrt::RCTPdf::implementation
     auto items = Pages().Items();
     items.Clear();
     m_pages.clear();
+    auto panelTemplate = FindName(winrt::to_hstring("OrientationSelector")).try_as<StackPanel>();
+    if (panelTemplate) {
+      panelTemplate.Orientation(m_horizontal ? Orientation::Horizontal : Orientation::Vertical);
+    }
     for (unsigned pageIdx = 0; pageIdx < document.PageCount(); ++pageIdx) {
       auto page = document.GetPage(pageIdx);
       auto dims = page.Size();
@@ -221,10 +247,19 @@ namespace winrt::RCTPdf::implementation
       co_await m_pages[m_currentPage].render();
       GoToPage(m_currentPage);
     }
+    lock.unlock();
+    // Render low-res preview of the pages
+    std::shared_lock shared_lock(m_rwlock);
+    double useScale = (std::min)(m_scale, 0.1);
+    for (unsigned page = 0; page < m_pages.size(); ++page) {
+      co_await m_pages[page].render(useScale);
+      SignalError("Render low-res preview of " + std::to_string(page + 1));
+    }
   }
 
   winrt::fire_and_forget RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const&,
     winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const&) {
+    auto lifetime = get_strong();
     std::shared_lock lock(m_rwlock, std::defer_lock);
     if (!lock.try_lock())
       return;
