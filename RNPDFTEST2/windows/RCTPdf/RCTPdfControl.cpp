@@ -258,7 +258,10 @@ namespace winrt::RCTPdf::implementation
   }
 
   winrt::fire_and_forget RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const&,
-    winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const&) {
+    winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args) {
+    if (args.IsIntermediate()) {
+      return;
+    }
     auto lifetime = get_strong();
     std::shared_lock lock(m_rwlock, std::defer_lock);
     if (!lock.try_lock())
