@@ -85,6 +85,8 @@ namespace winrt::RCTPdf::implementation
         co_return;
       if (renderScale.compare_exchange_weak(currentRenderScale, useScale))
         break;
+      if (renderScale > useScale)
+        co_return;
     }
     PdfPageRenderOptions renderOptions;
     auto dims = page.Size();
@@ -308,8 +310,9 @@ namespace winrt::RCTPdf::implementation
            m_pages[pageToRender].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd) > 0) {
       if (m_pages[pageToRender].needsRender()) {
         SignalError("Rendering " + std::to_string(pageToRender + 1));
-        co_await m_pages[++pageToRender].render();
+        co_await m_pages[pageToRender].render();
       }
+      ++pageToRender;
     }
     if (pageToRender < m_pages.size() && m_pages[pageToRender].needsRender()) {
       SignalError("Rendering " + std::to_string(pageToRender + 1));
