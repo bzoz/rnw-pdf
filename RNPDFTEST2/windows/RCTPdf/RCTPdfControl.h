@@ -20,6 +20,7 @@ namespace winrt::RCTPdf::implementation
       bool needsRender() const;
       winrt::IAsyncAction render();
       winrt::IAsyncAction render(double useScale);
+      winrt::IAsyncAction forceRender(double useScale);
       double height, width;
       double scaledHeight, scaledWidth;
       double scaledTopOffset, scaledLeftOffset;
@@ -49,6 +50,8 @@ namespace winrt::RCTPdf::implementation
         void DispatchCommand(
           winrt::hstring const& commandId,
           winrt::Microsoft::ReactNative::IJSValueReader const& commandArgsReader) noexcept;
+
+        void PagesContainer_PointerWheelChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
     private:
         Microsoft::ReactNative::IReactContext m_reactContext{ nullptr };
 
@@ -63,12 +66,16 @@ namespace winrt::RCTPdf::implementation
         // Margins of each page
         int m_margins = 10;
         // Scale at which the PDF is displayed
-        double m_scale = 1;
+        double m_scale = 0.2;
+        double m_minScale = 0.1;
+        double m_maxScale = 3.0;
         // Are we in "horizontal" mode?
-        bool m_horizontal = true;
+        bool m_horizontal = false;
         // Render the pages in reverse order
         bool m_reverse = false;
 
+        double m_targetHorizontalOffset = -1;
+        double m_targetVerticalOffset = -1;
         std::vector<PDFPageInfo> m_pages;
         void UpdatePagesInfoMarginOrScale();
 

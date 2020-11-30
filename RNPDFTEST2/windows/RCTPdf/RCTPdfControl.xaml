@@ -6,7 +6,14 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-  <ScrollViewer x:Name="PagesContainer" Background="#505050" HorizontalScrollMode="Enabled" HorizontalScrollBarVisibility="Visible">
+  <ScrollViewer
+    x:Name="PagesContainer"
+    Background="#505050"
+    HorizontalScrollMode="Enabled"
+    HorizontalScrollBarVisibility="Visible"
+    IsTabStop="True"
+    PointerWheelChanged="PagesContainer_PointerWheelChanged"
+    >
     <ItemsControl x:Name="Pages" HorizontalAlignment="Center">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
