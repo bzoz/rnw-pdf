@@ -113,18 +113,18 @@ namespace winrt::RCTPdf::implementation
     auto nativeProps = winrt::single_threaded_map<hstring, ViewManagerPropertyType>();
     nativeProps.Insert(L"path", ViewManagerPropertyType::String);
     nativeProps.Insert(L"page", ViewManagerPropertyType::Number);
-    // TODO: nativeProps.Insert(L"scale", ViewManagerPropertyType::Number);
-    // TODO: nativeProps.Insert(L"minScale", ViewManagerPropertyType::Number);
-    // TODO: nativeProps.Insert(L"maxScale", ViewManagerPropertyType::Number);
-    // TODO: nativeProps.Insert(L"horizontal", ViewManagerPropertyType::Boolean);
-    // TODO: nativeProps.Insert(L"fitWidth", ViewManagerPropertyType::Boolean);
-    // TODO: nativeProps.Insert(L"fitPolicy", ViewManagerPropertyType::Number);
-    // TODO: nativeProps.Insert(L"spacing", ViewManagerPropertyType::Number);
+    nativeProps.Insert(L"scale", ViewManagerPropertyType::Number);
+    nativeProps.Insert(L"minScale", ViewManagerPropertyType::Number);
+    nativeProps.Insert(L"maxScale", ViewManagerPropertyType::Number);
+    nativeProps.Insert(L"horizontal", ViewManagerPropertyType::Boolean);
+    nativeProps.Insert(L"fitWidth", ViewManagerPropertyType::Boolean);
+    nativeProps.Insert(L"fitPolicy", ViewManagerPropertyType::Number);
+    nativeProps.Insert(L"spacing", ViewManagerPropertyType::Number);
     nativeProps.Insert(L"password", ViewManagerPropertyType::String);
-    // TODO: nativeProps.Insert(L"background", ViewManagerPropertyType::Color);
+    nativeProps.Insert(L"background", ViewManagerPropertyType::Color);
     // TODO: nativeProps.Insert(L"enablePaging", ViewManagerPropertyType::Boolean);
-    // TODO: nativeProps.Insert(L"enableRTL", ViewManagerPropertyType::Boolean);
-    // TODO: nativeProps.Insert(L"singlePage", ViewManagerPropertyType::Boolean);
+    nativeProps.Insert(L"enableRTL", ViewManagerPropertyType::Boolean);
+    nativeProps.Insert(L"singlePage", ViewManagerPropertyType::Boolean);
 
     return nativeProps.GetView();
   }
@@ -134,7 +134,14 @@ namespace winrt::RCTPdf::implementation
     const JSValueObject& propertyMap = JSValue::ReadObjectFrom(propertyMapReader);
     std::string pdfURI;
     std::string pdfPassword;
-    m_currentPage = 0;
+    std::optional<int> setPage;
+    std::optional<double> minScale, maxScale, scale;
+    std::optional<bool> horizontal;
+    std::optional<bool> fitWidth;
+    std::optional<int> fitPolicy;
+    std::optional<int> spacing;
+    std::optional<bool> reverse;
+    std::optional<bool> singlePage;
     for (auto const& pair : propertyMap) {
       auto const& propertyName = pair.first;
       auto const& propertyValue = pair.second;
@@ -144,15 +151,87 @@ namespace winrt::RCTPdf::implementation
       else if (propertyName == "password") {
         pdfPassword = propertyValue != nullptr ? propertyValue.AsString() : "";
       }
-      else if (propertyName == "page") {
-        m_currentPage = propertyValue != nullptr ? propertyValue.AsInt32() - 1 : 0;
+      else if (propertyName == "page" && propertyValue != nullptr) {
+        setPage = propertyValue.AsInt32() - 1;
       }
-
+      else if (propertyName == "minScale" && propertyValue != nullptr) {
+        minScale = propertyValue.AsDouble();
+      }
+      else if (propertyName == "minScale" && propertyValue != nullptr) {
+        minScale = propertyValue.AsDouble();
+      }
+      else if (propertyName == "maxScale" && propertyValue != nullptr) {
+        maxScale = propertyValue.AsDouble();
+      }
+      else if (propertyName == "horizontal" && propertyValue != nullptr) {
+        horizontal = propertyValue.AsBoolean();
+      }
+      else if (propertyName == "fitWidth" && propertyValue != nullptr) {
+        fitWidth = propertyValue.AsBoolean();
+      }
+      else if (propertyName == "fitPolic" && propertyValue != nullptr) {
+        fitPolicy = propertyValue.AsInt32();
+      }
+      else if (propertyName == "spacing" && propertyValue != nullptr) {
+        maxScale = propertyValue.AsInt32();
+      }
+      else if (propertyName == "enableRTL" && propertyValue != nullptr) {
+        reverse = propertyValue.AsBoolean();
+      }
+      else if (propertyName == "singlePage" && propertyValue != nullptr) {
+        singlePage = propertyValue.AsBoolean();
+      }
+      else if (propertyName == "background" && propertyValue != nullptr) {
+        auto color = propertyValue.AsInt32();
+        winrt::Windows::UI::Color brushColor;
+        brushColor.A = (color >> 24) & 0xff;
+        brushColor.R = (color >> 16) & 0xff;
+        brushColor.G = (color >> 8) & 0xff;
+        brushColor.B = color & 0xff;
+        PagesContainer().Background(SolidColorBrush(brushColor));
+      }
     }
-    if (pdfURI != m_pdfURI || pdfPassword != m_pdfPassword) {
+    // If we are loading a new PDF:
+    if (pdfURI != m_pdfURI ||
+        pdfPassword != m_pdfPassword ||
+        (reverse && *reverse != m_reverse) ||
+        (singlePage && (m_pages.empty() || *singlePage && m_pages.size() != 1 || !*singlePage && m_pages.size() == 1)) ) {
       m_pdfURI = pdfURI;
       m_pdfPassword = pdfPassword;
-      LoadPDF(std::move(lock), 2);
+      m_currentPage = setPage.value_or(0);
+      m_scale = scale.value_or(1);
+      m_minScale = minScale.value_or(0.1);
+      m_maxScale = maxScale.value_or(3.0);
+      m_horizontal = horizontal.value_or(false);
+      int useFitPolicy = 2;
+      if (fitWidth)
+        useFitPolicy = 0;
+      if (fitPolicy)
+        useFitPolicy = *fitPolicy;
+      m_margins = spacing.value_or(5);
+      m_reverse = reverse.value_or(false);
+      LoadPDF(std::move(lock), useFitPolicy, singlePage.value_or(false));
+    } else {
+      // If we are updating the pdf:
+      lock.unlock();
+      std::shared_lock shared(m_rwlock);
+      m_minScale = minScale.value_or(m_minScale);
+      m_maxScale = maxScale.value_or(m_maxScale);
+      bool needScrool = false;
+      if (horizontal && *horizontal != m_horizontal) {
+        m_horizontal = *horizontal;
+        needScrool = true;
+      }
+      if (setPage) {
+        m_currentPage = *setPage;
+        needScrool = true;
+      }
+      if ((scale && *scale != m_scale) || (spacing && *spacing != m_margins)) {
+        Rescale(scale.value_or(m_scale), spacing.value_or(m_margins), !needScrool);
+      }
+      if (needScrool) {
+        GoToPage(m_currentPage);
+      }
     }
   }
 
@@ -264,7 +343,7 @@ namespace winrt::RCTPdf::implementation
     }
   }
 
-  winrt::fire_and_forget RCTPdfControl::LoadPDF(std::unique_lock<std::shared_mutex> lock, int fitPolicy) {
+  winrt::fire_and_forget RCTPdfControl::LoadPDF(std::unique_lock<std::shared_mutex> lock, int fitPolicy, bool singlePage) {
     auto lifetime = get_strong();
     auto uri = Uri(winrt::to_hstring(m_pdfURI));
     auto file = co_await StorageFile::GetFileFromApplicationUriAsync(uri);
@@ -297,7 +376,10 @@ namespace winrt::RCTPdf::implementation
         break;
       }
     }
-    for (unsigned pageIdx = 0; pageIdx < document.PageCount(); ++pageIdx) {
+    unsigned pagesCount = document.PageCount();
+    if (singlePage && pagesCount > 0)
+      pagesCount = 1;
+    for (unsigned pageIdx = 0; pageIdx < pagesCount; ++pageIdx) {
       auto page = document.GetPage(pageIdx);
       auto dims = page.Size();
       Image pageImage;
@@ -412,26 +494,39 @@ namespace winrt::RCTPdf::implementation
     PagesContainer().ChangeView(horizontalOffset, verticalOffset, nullptr, true);
   }
 
-  void RCTPdfControl::PagesContainer_PointerWheelChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e)
-  {
-    auto self = get_strong();
+  void RCTPdfControl::Rescale(double newScale, double newMargin, bool goToNewPosition) {
+    if (newScale != m_scale || newMargin != m_margins) {
+      double rescale = newScale / m_scale;
+      double targetHorizontalOffset = PagesContainer().HorizontalOffset() * rescale;
+      double targetVerticalOffset = PagesContainer().VerticalOffset() * rescale;
+      if (newMargin != m_margins) {
+        if (m_horizontal) {
+          targetVerticalOffset += m_currentPage * 2 *(newMargin - m_margins) * rescale;
+        }
+        else {
+          targetHorizontalOffset += m_currentPage * 2 * (newMargin - m_margins) * rescale;
+        }
+      }
+      m_scale = newScale;
+      m_margins = (int) newMargin;
+      UpdatePagesInfoMarginOrScale();
+      auto maxHorizontalOffset = PagesContainer().ScrollableWidth();
+      auto maxVerticalOffset = PagesContainer().ScrollableHeight();
+      if (goToNewPosition) {
+        PagesContainer().ChangeView(min(targetHorizontalOffset, maxHorizontalOffset), min(targetVerticalOffset, maxVerticalOffset), nullptr, true);
+      }
+      SignalScaleChanged(m_scale);
+    }
+  }
+
+  void RCTPdfControl::PagesContainer_PointerWheelChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) {
     winrt::Windows::System::VirtualKeyModifiers modifiers = e.KeyModifiers();
     if ((modifiers & winrt::Windows::System::VirtualKeyModifiers::Control) != winrt::Windows::System::VirtualKeyModifiers::Control)
       return;
     double delta = (e.GetCurrentPoint(*this).Properties().MouseWheelDelta() / WHEEL_DELTA) * 0.1;
     std::shared_lock lock(m_rwlock);
     auto newScale = (std::max)((std::min)(m_scale + delta, m_maxScale), m_minScale);
-    if (newScale != m_scale) {
-      double rescale = newScale / m_scale;
-      double targetHorizontalOffset = PagesContainer().HorizontalOffset() * rescale;
-      double targetVerticalOffset = PagesContainer().VerticalOffset() * rescale;
-      m_scale = newScale;
-      UpdatePagesInfoMarginOrScale();
-      auto maxHorizontalOffset = PagesContainer().ScrollableWidth();
-      auto maxVerticalOffset = PagesContainer().ScrollableHeight();
-      PagesContainer().ChangeView(min(targetHorizontalOffset, maxHorizontalOffset), min(targetVerticalOffset, maxVerticalOffset), nullptr, true);
-      SignalScaleChanged(m_scale);
-    }
+    Rescale(newScale, m_margins, true);
     e.Handled(true);
   }
 }
