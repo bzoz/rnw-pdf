@@ -221,15 +221,16 @@ namespace winrt::RCTPdf::implementation
 
   winrt::Windows::Foundation::Collections::IVectorView<winrt::hstring> RCTPdfControl::Commands() noexcept {
     auto commands = winrt::single_threaded_vector<hstring>();
-    // TODO: commands.Append(L"setPage");
+    commands.Append(L"setPage");
     return commands.GetView();
   }
 
   void RCTPdfControl::DispatchCommand(winrt::hstring const& commandId, winrt::Microsoft::ReactNative::IJSValueReader const& commandArgsReader) noexcept {
-    // TODO: handle commands here
     auto commandArgs = JSValue::ReadArrayFrom(commandArgsReader);
-    if (commandId == L"setPage") {
-      //TextElement().Text(L"sampleCommand used!");
+    if (commandId == L"setPage" && commandArgs.size() > 0) {
+      std::shared_lock lock(m_rwlock);
+      auto page = commandArgs[0].AsInt32() - 1;
+      GoToPage(page);
     }
   }
 

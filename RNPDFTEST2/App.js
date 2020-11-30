@@ -14,18 +14,24 @@ import {
   View,
   Text,
   StatusBar,
-  requireNativeComponent
+  requireNativeComponent,  Button,
+  findNodeHandle,
+  UIManager
 } from 'react-native';
 
 const RCTPdf = requireNativeComponent('RCTPdf');
 
 const App: () => React$Node = () => {
+  let pdfRef;
+  function onPress() {
+    if (pdfRef) {
+      const tag = findNodeHandle(pdfRef)
+      UIManager.dispatchViewManagerCommand(tag, UIManager.getViewManagerConfig('RCTPdf').Commands.setPage, [10]);
+    }
+  }
   return (
     <>
-      <Text>Hello!</Text>
-      <Text>Hello!</Text>
-      <Text>Hello!</Text>
-      <Text>Hello!</Text>
+      <Button onPress={onPress} title="Go To Page 10" />
       <RCTPdf
         path="ms-appx:///TestPDF.pdf"
         page={1006}
@@ -34,6 +40,7 @@ const App: () => React$Node = () => {
         onPageChanged={(event) => { console.log(`Page: ${event.nativeEvent.page}/${event.nativeEvent.totalPages}`) }}
         onScaleChanged={(event) => { console.log(`New sacale: ${event.nativeEvent.scale}`) }}
         style={{ width: 800, height: 900 }}
+        ref={(ref) => { pdfRef = ref }}
       />
     </>
   );
