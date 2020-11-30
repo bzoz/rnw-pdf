@@ -26,11 +26,15 @@ const App: () => React$Node = () => {
       <Text>Hello!</Text>
       <Text>Hello!</Text>
       <Text>Hello!</Text>
-      <RCTPdf path="ms-appx:///TestPDF.pdf"
+      <RCTPdf
+        path="ms-appx:///TestPDF.pdf"
         page={1006}
-        onError={(event) => { console.log(event.nativeEvent.value) }}
-        onPageChanged={(event) => { console.log(`Page: ${event.nativeEvent.value}`) }}
-        style={{ width: 800, height: 900 }} />
+        onError={(event) => { console.log(`Error: ${event.nativeEvent.error}`) }}
+        onLoadComplete={(event) => { console.log(`Pages: ${event.nativeEvent.totalPages}, 1st page size: ${event.nativeEvent.width}x${event.nativeEvent.height}`) }}
+        onPageChanged={(event) => { console.log(`Page: ${event.nativeEvent.page}/${event.nativeEvent.totalPages}`) }}
+        onScaleChanged={(event) => { console.log(`New sacale: ${event.nativeEvent.scale}`) }}
+        style={{ width: 800, height: 900 }}
+      />
     </>
   );
 };

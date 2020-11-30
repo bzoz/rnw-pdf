@@ -15,15 +15,14 @@ namespace winrt::RCTPdf::implementation
       PDFPageInfo(winrt::Windows::UI::Xaml::Controls::Image image, winrt::Windows::Data::Pdf::PdfPage page, double imageScale, double renderScale);
       PDFPageInfo(const PDFPageInfo&);
       PDFPageInfo(PDFPageInfo&&);
-      double pageVisiblePixels(bool horizontal, double viewportStart, double viewportEnd) const;
-      double pageSize(bool horizontal) const;
+      unsigned pageVisiblePixels(bool horizontal, double viewportStart, double viewportEnd) const;
+      unsigned pageSize(bool horizontal) const;
       bool needsRender() const;
       winrt::IAsyncAction render();
       winrt::IAsyncAction render(double useScale);
-      winrt::IAsyncAction forceRender(double useScale);
-      double height, width;
-      double scaledHeight, scaledWidth;
-      double scaledTopOffset, scaledLeftOffset;
+      unsigned height, width;
+      unsigned scaledHeight, scaledWidth;
+      unsigned scaledTopOffset, scaledLeftOffset;
       double imageScale; // scale at which the image is displayed
       // Multiple taks can update the image, use the render scale as the sync point
       std::atomic<double> renderScale; // scale at which the image is rendered
@@ -85,7 +84,11 @@ namespace winrt::RCTPdf::implementation
 
         winrt::fire_and_forget LoadPDF(std::unique_lock<std::shared_mutex> lock);
         void GoToPage(int page);
+
         void SignalError(const std::string& error);
+        void SignalLoadComplete(int totalPages, int width, int height);
+        void SignalPageChange(int page, int totalPages);
+        void SignalScaleChanged(double scale);
     };
 }
 

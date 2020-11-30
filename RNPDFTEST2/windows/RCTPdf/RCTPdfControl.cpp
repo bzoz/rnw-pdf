@@ -29,54 +29,50 @@ namespace winrt::RCTPdf::implementation
   PDFPageInfo::PDFPageInfo(winrt::Windows::UI::Xaml::Controls::Image image, winrt::Windows::Data::Pdf::PdfPage page, double imageScale, double renderScale) :
     image(image), page(page), imageScale(imageScale), renderScale(renderScale), scaledTopOffset(0), scaledLeftOffset(0) {
     auto dims = page.Size();
-    height = dims.Height;
-    width = dims.Width;
-    scaledHeight = height * imageScale;
-    scaledWidth = width * imageScale;
+    height = (unsigned)dims.Height;
+    width = (unsigned)dims.Width;
+    scaledHeight = (unsigned)(height * imageScale);
+    scaledWidth = (unsigned)(width * imageScale);
   }
   PDFPageInfo::PDFPageInfo(const PDFPageInfo& rhs) :
     height(rhs.height), width(rhs.width), scaledHeight(rhs.scaledHeight), scaledWidth(rhs.scaledWidth),
     scaledTopOffset(rhs.scaledTopOffset), scaledLeftOffset(rhs.scaledTopOffset), imageScale(rhs.imageScale),
     renderScale((double)rhs.renderScale), image(rhs.image), page(rhs.page)
   { }
-
   PDFPageInfo::PDFPageInfo(PDFPageInfo&& rhs) :
     height(rhs.height), width(rhs.width), scaledHeight(rhs.scaledHeight), scaledWidth(rhs.scaledWidth),
     scaledTopOffset(rhs.scaledTopOffset), scaledLeftOffset(rhs.scaledTopOffset), imageScale(rhs.imageScale),
     renderScale((double)rhs.renderScale), image(std::move(rhs.image)), page(std::move(rhs.page))
   { }
-
-  double PDFPageInfo::pageVisiblePixels(bool horizontal, double viewportStart, double viewportEnd) const {
+  unsigned PDFPageInfo::pageVisiblePixels(bool horizontal, double viewportStart, double viewportEnd) const {
     if (viewportEnd < viewportStart)
       std::swap(viewportStart, viewportEnd);
     auto pageStart = horizontal ? scaledLeftOffset : scaledTopOffset;
     auto pageSize = PDFPageInfo::pageSize(horizontal);
     auto pageEnd = pageStart + pageSize;
-    if (pageStart >= viewportStart && pageStart <= viewportEnd) { // we see the top edge
-      return (std::min)(pageEnd, viewportEnd) - pageStart;
+    auto uViewportStart = (unsigned)viewportStart;
+    auto uViewportEnd = (unsigned)viewportEnd;
+    if (pageStart >= uViewportStart && pageStart <= uViewportEnd) { // we see the top edge
+      return (std::min)(pageEnd, uViewportEnd) - pageStart;
     }
-    if (pageEnd >= viewportStart && pageEnd <= viewportEnd) { // we see the bottom edge
-      return pageEnd - (std::max)(pageStart, viewportStart);
+    if (pageEnd >= uViewportStart && pageEnd <= uViewportEnd) { // we see the bottom edge
+      return pageEnd - (std::max)(pageStart, uViewportStart);
     }
-    if (pageStart <= viewportStart && pageEnd >= viewportEnd) {// we see the entire page
-      return viewportEnd - viewportStart;
+    if (pageStart <= uViewportStart && pageEnd >= uViewportEnd) {// we see the entire page
+      return uViewportEnd - uViewportStart;
     }
     return 0;
   }
-  
-  double PDFPageInfo::pageSize(bool horizontal) const {
+  unsigned PDFPageInfo::pageSize(bool horizontal) const {
     return horizontal ? scaledWidth : scaledHeight;
   }
-
   bool PDFPageInfo::needsRender() const {
     double currentRenderScale = renderScale;
     return currentRenderScale < imageScale || currentRenderScale > imageScale * 2;
   }
-
   winrt::IAsyncAction PDFPageInfo::render() {
     return render(imageScale);
   }
-
   winrt::IAsyncAction PDFPageInfo::render(double useScale) {
     double currentRenderScale;
     while (true) {
@@ -99,22 +95,7 @@ namespace winrt::RCTPdf::implementation
     if (renderScale == useScale)
       image.Source(bitmap);
   }
-
-  winrt::IAsyncAction PDFPageInfo::forceRender(double useScale) {
-    PdfPageRenderOptions renderOptions;
-    renderScale = useScale;
-    auto dims = page.Size();
-    renderOptions.DestinationHeight(static_cast<uint32_t>(dims.Height * useScale));
-    renderOptions.DestinationWidth(static_cast<uint32_t>(dims.Width * useScale));
-    InMemoryRandomAccessStream stream;
-    co_await page.RenderToStreamAsync(stream, renderOptions);
-    BitmapImage bitmap;
-    co_await bitmap.SetSourceAsync(stream);
-    image.Source(bitmap);
-    renderScale = useScale;
-  }
   
-
   RCTPdfControl::RCTPdfControl(IReactContext const& reactContext) : m_reactContext(reactContext) {
     this->AllowFocusOnInteraction(true);
     InitializeComponent();
@@ -124,7 +105,6 @@ namespace winrt::RCTPdf::implementation
         self->OnViewChanged(sender, args);
       }
     });
-
   }
 
   winrt::Windows::Foundation::Collections::
@@ -179,13 +159,64 @@ namespace winrt::RCTPdf::implementation
   winrt::Microsoft::ReactNative::ConstantProviderDelegate RCTPdfControl::ExportedCustomBubblingEventTypeConstants() noexcept {
     return nullptr;
   }
-
   winrt::Microsoft::ReactNative::ConstantProviderDelegate RCTPdfControl::ExportedCustomDirectEventTypeConstants() noexcept {
     return [](IJSValueWriter const& constantWriter) {
-      // TODO: WriteCustomDirectEventTypeConstant(constantWriter, "onLoadComplete");
+      WriteCustomDirectEventTypeConstant(constantWriter, "Error");
+      WriteCustomDirectEventTypeConstant(constantWriter, "LoadComplete");
       WriteCustomDirectEventTypeConstant(constantWriter, "PageChanged");
-      WriteCustomDirectEventTypeConstant(constantWriter, "onError");
+      WriteCustomDirectEventTypeConstant(constantWriter, "ScaleChanged");
     };
+  }
+  void RCTPdfControl::SignalError(const std::string& error) {
+    m_reactContext.DispatchEvent(
+      *this,
+      L"topError",
+      [&](winrt::Microsoft::ReactNative::IJSValueWriter const& eventDataWriter) noexcept {
+        eventDataWriter.WriteObjectBegin();
+        {
+          WriteProperty(eventDataWriter, L"error", winrt::to_hstring(error));
+        }
+        eventDataWriter.WriteObjectEnd();
+      });
+  }
+  void RCTPdfControl::SignalLoadComplete(int totalPages, int width, int height) {
+    m_reactContext.DispatchEvent(
+      *this,
+      L"topLoadComplete",
+      [&](winrt::Microsoft::ReactNative::IJSValueWriter const& eventDataWriter) noexcept {
+        eventDataWriter.WriteObjectBegin();
+        {
+          WriteProperty(eventDataWriter, L"totalPages", totalPages);
+          WriteProperty(eventDataWriter, L"width", width);
+          WriteProperty(eventDataWriter, L"height", height);
+        }
+        eventDataWriter.WriteObjectEnd();
+      });
+  }
+  void RCTPdfControl::SignalPageChange(int page, int totalPages) {
+    m_reactContext.DispatchEvent(
+      *this,
+      L"topPageChanged",
+      [&](winrt::Microsoft::ReactNative::IJSValueWriter const& eventDataWriter) noexcept {
+        eventDataWriter.WriteObjectBegin();
+        {
+          WriteProperty(eventDataWriter, L"page", page);
+          WriteProperty(eventDataWriter, L"totalPages", totalPages);
+        }
+        eventDataWriter.WriteObjectEnd();
+      });
+  }
+  void RCTPdfControl::SignalScaleChanged(double scale) {
+    m_reactContext.DispatchEvent(
+      *this,
+      L"topScaleChanged",
+      [&](winrt::Microsoft::ReactNative::IJSValueWriter const& eventDataWriter) noexcept {
+        eventDataWriter.WriteObjectBegin();
+        {
+          WriteProperty(eventDataWriter, L"scale", scale);
+        }
+        eventDataWriter.WriteObjectEnd();
+      });
   }
 
   winrt::Windows::Foundation::Collections::IVectorView<winrt::hstring> RCTPdfControl::Commands() noexcept {
@@ -204,29 +235,31 @@ namespace winrt::RCTPdf::implementation
   }
 
   void RCTPdfControl::UpdatePagesInfoMarginOrScale() {
+    unsigned scaledMargin = (unsigned)(m_scale * m_margins);
     for (auto& page : m_pages) {
       page.imageScale = m_scale;
-      page.scaledWidth = page.width * m_scale;
-      page.scaledHeight = page.height * m_scale;
-      page.image.Margin(ThicknessHelper::FromUniformLength(m_margins * m_scale));
+      page.scaledWidth = (unsigned)(page.width * m_scale);
+      page.scaledHeight = (unsigned)(page.height * m_scale);
+      page.image.Margin(ThicknessHelper::FromUniformLength(scaledMargin));
       page.image.Width(page.scaledWidth);
       page.image.Height(page.scaledHeight);
     }
-    double totalTopOffset = 0;
-    double totalLeftOffset = 0;
+    unsigned totalTopOffset = 0;
+    unsigned totalLeftOffset = 0;
+    unsigned doubleScaledMargin = scaledMargin * 2;
     if (m_reverse) {
       for (int page = m_pages.size() - 1; page >= 0; --page) {
         m_pages[page].scaledTopOffset = totalTopOffset;
-        totalTopOffset += m_pages[page].scaledHeight + m_margins * 2 * m_scale;
+        totalTopOffset += m_pages[page].scaledHeight + doubleScaledMargin;
         m_pages[page].scaledLeftOffset = totalLeftOffset;
-        totalLeftOffset += m_pages[page].scaledWidth + m_margins * 2 * m_scale;
+        totalLeftOffset += m_pages[page].scaledWidth + doubleScaledMargin;
       }
     } else {
       for (int page = 0; page < (int)m_pages.size(); ++page) {
         m_pages[page].scaledTopOffset = totalTopOffset;
-        totalTopOffset += m_pages[page].scaledHeight + m_margins * 2 * m_scale;
+        totalTopOffset += m_pages[page].scaledHeight + doubleScaledMargin;
         m_pages[page].scaledLeftOffset = totalLeftOffset;
-        totalLeftOffset += m_pages[page].scaledWidth + m_margins * 2 * m_scale;
+        totalLeftOffset += m_pages[page].scaledWidth + doubleScaledMargin;
       }
     }
   }
@@ -264,13 +297,17 @@ namespace winrt::RCTPdf::implementation
       co_await m_pages[m_currentPage].render();
       GoToPage(m_currentPage);
     }
+    if (m_pages.empty()) {
+      SignalLoadComplete(0, 0, 0);
+    } else {
+      SignalLoadComplete(m_pages.size(), m_pages.front().width, m_pages.front().height);
+    }
     lock.unlock();
     // Render low-res preview of the pages
     std::shared_lock shared_lock(m_rwlock);
     double useScale = (std::min)(m_scale, 0.1);
     for (unsigned page = 0; page < m_pages.size(); ++page) {
       co_await m_pages[page].render(useScale);
-      SignalError("Render low-res preview of " + std::to_string(page + 1));
     }
   }
 
@@ -289,8 +326,10 @@ namespace winrt::RCTPdf::implementation
     // Go through pages untill we reach a visible page
     int page = 0;
     double visiblePagePixels = 0;
-    for (; page < (int)m_pages.size() && visiblePagePixels == 0; ++page) {
+    for (; page < (int)m_pages.size(); ++page) {
       visiblePagePixels = m_pages[page].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd);
+      if (visiblePagePixels > 0)
+        break;
     }
     if (page == (int)m_pages.size()) {
       --page;
@@ -338,16 +377,7 @@ namespace winrt::RCTPdf::implementation
     }
     if (page != m_currentPage) {
       m_currentPage = page;
-      m_reactContext.DispatchEvent(
-        *this,
-        L"topPageChanged",
-        [&](winrt::Microsoft::ReactNative::IJSValueWriter const& eventDataWriter) noexcept {
-          eventDataWriter.WriteObjectBegin();
-          {
-            WriteProperty(eventDataWriter, L"value", page + 1);
-          }
-          eventDataWriter.WriteObjectEnd();
-        });
+      SignalPageChange(m_currentPage + 1, m_pages.size());
     }
   }
 
@@ -361,18 +391,6 @@ namespace winrt::RCTPdf::implementation
     PagesContainer().ChangeView(horizontalOffset, verticalOffset, nullptr, true);
   }
 
-  void RCTPdfControl::SignalError(const std::string& error) {
-    m_reactContext.DispatchEvent(
-      *this,
-      L"topError",
-      [&](winrt::Microsoft::ReactNative::IJSValueWriter const& eventDataWriter) noexcept {
-        eventDataWriter.WriteObjectBegin();
-        {
-          WriteProperty(eventDataWriter, L"value", winrt::to_hstring(error));
-        }
-        eventDataWriter.WriteObjectEnd();
-      });
-  }
   void RCTPdfControl::PagesContainer_PointerWheelChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e)
   {
     auto self = get_strong();
@@ -385,12 +403,13 @@ namespace winrt::RCTPdf::implementation
     if (newScale != m_scale) {
       double rescale = newScale / m_scale;
       double targetHorizontalOffset = PagesContainer().HorizontalOffset() * rescale;
-      double targetVerticalOffset = PagesContainer().VerticalOffset() * rescale;e;
+      double targetVerticalOffset = PagesContainer().VerticalOffset() * rescale;
       m_scale = newScale;
       UpdatePagesInfoMarginOrScale();
       auto maxHorizontalOffset = PagesContainer().ScrollableWidth();
       auto maxVerticalOffset = PagesContainer().ScrollableHeight();
       PagesContainer().ChangeView(min(targetHorizontalOffset, maxHorizontalOffset), min(targetVerticalOffset, maxVerticalOffset), nullptr, true);
+      SignalScaleChanged(m_scale);
     }
     e.Handled(true);
   }
