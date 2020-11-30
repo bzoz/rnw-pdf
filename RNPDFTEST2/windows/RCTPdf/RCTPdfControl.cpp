@@ -152,7 +152,7 @@ namespace winrt::RCTPdf::implementation
     if (pdfURI != m_pdfURI || pdfPassword != m_pdfPassword) {
       m_pdfURI = pdfURI;
       m_pdfPassword = pdfPassword;
-      LoadPDF(std::move(lock));
+      LoadPDF(std::move(lock), 2);
     }
   }
 
@@ -222,14 +222,13 @@ namespace winrt::RCTPdf::implementation
   winrt::Windows::Foundation::Collections::IVectorView<winrt::hstring> RCTPdfControl::Commands() noexcept {
     auto commands = winrt::single_threaded_vector<hstring>();
     // TODO: commands.Append(L"setPage");
-    // TODO: commands.Append(L"setScale");
     return commands.GetView();
   }
 
   void RCTPdfControl::DispatchCommand(winrt::hstring const& commandId, winrt::Microsoft::ReactNative::IJSValueReader const& commandArgsReader) noexcept {
     // TODO: handle commands here
     auto commandArgs = JSValue::ReadArrayFrom(commandArgsReader);
-    if (commandId == L"sampleCommand") {
+    if (commandId == L"setPage") {
       //TextElement().Text(L"sampleCommand used!");
     }
   }
@@ -264,7 +263,7 @@ namespace winrt::RCTPdf::implementation
     }
   }
 
-  winrt::fire_and_forget RCTPdfControl::LoadPDF(std::unique_lock<std::shared_mutex> lock) {
+  winrt::fire_and_forget RCTPdfControl::LoadPDF(std::unique_lock<std::shared_mutex> lock, int fitPolicy) {
     auto lifetime = get_strong();
     auto uri = Uri(winrt::to_hstring(m_pdfURI));
     auto file = co_await StorageFile::GetFileFromApplicationUriAsync(uri);
@@ -275,6 +274,27 @@ namespace winrt::RCTPdf::implementation
     auto panelTemplate = FindName(winrt::to_hstring("OrientationSelector")).try_as<StackPanel>();
     if (panelTemplate) {
       panelTemplate.Orientation(m_horizontal ? Orientation::Horizontal : Orientation::Vertical);
+    }
+    if (document.PageCount() == 0) {
+      if (fitPolicy != -1)
+        m_scale = 1;
+    } else {
+      auto firstPageSize = document.GetPage(0).Size();
+      auto viewWidth = PagesContainer().ViewportWidth();
+      auto viewHeight = PagesContainer().ViewportHeight();
+      switch (fitPolicy) {
+      case 0:
+        m_scale = viewWidth / (firstPageSize.Width + 2 * m_margins);
+        break;
+      case 1:
+        m_scale = viewHeight / (firstPageSize.Height + 2 * m_margins);
+        break;
+      case 2:
+        m_scale = (std::min)(viewWidth / (firstPageSize.Width + 2 * m_margins), viewHeight / (firstPageSize.Height + 2 * m_margins));
+        break;
+      default:
+        break;
+      }
     }
     for (unsigned pageIdx = 0; pageIdx < document.PageCount(); ++pageIdx) {
       auto page = document.GetPage(pageIdx);

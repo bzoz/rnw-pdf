@@ -82,7 +82,7 @@ namespace winrt::RCTPdf::implementation
           winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args);
         winrt::Windows::UI::Xaml::Controls::ScrollViewer::ViewChanged_revoker m_viewChangedRevoker{};
 
-        winrt::fire_and_forget LoadPDF(std::unique_lock<std::shared_mutex> lock);
+        winrt::fire_and_forget LoadPDF(std::unique_lock<std::shared_mutex> lock, int fitPolicy);
         void GoToPage(int page);
 
         void SignalError(const std::string& error);
