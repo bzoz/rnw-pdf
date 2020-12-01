@@ -347,7 +347,22 @@ namespace winrt::RCTPdf::implementation
     auto lifetime = get_strong();
     auto uri = Uri(winrt::to_hstring(m_pdfURI));
     auto file = co_await StorageFile::GetFileFromApplicationUriAsync(uri);
-    auto document = co_await PdfDocument::LoadFromFileAsync(file, winrt::to_hstring(m_pdfPassword));
+    PdfDocument document = nullptr;
+    try {
+      document = co_await PdfDocument::LoadFromFileAsync(file, winrt::to_hstring(m_pdfPassword));
+    } catch (winrt::hresult_error const& ex) {
+      switch (ex.to_abi()) {
+        case __HRESULT_FROM_WIN32(ERROR_WRONG_PASSWORD):
+          SignalError("Document is password-protected and password is incorrect.");
+          co_return;
+        case E_FAIL:
+          SignalError("Document is not a valid PDF.");
+          co_return;
+        default:
+          SignalError(winrt::to_string(ex.message()));
+          co_return;
+      }
+    }
     auto items = Pages().Items();
     items.Clear();
     m_pages.clear();
@@ -364,13 +379,13 @@ namespace winrt::RCTPdf::implementation
       auto viewHeight = PagesContainer().ViewportHeight();
       switch (fitPolicy) {
       case 0:
-        m_scale = viewWidth / (firstPageSize.Width + 2 * m_margins);
+        m_scale = viewWidth / (firstPageSize.Width + 2 * (double)m_margins);
         break;
       case 1:
-        m_scale = viewHeight / (firstPageSize.Height + 2 * m_margins);
+        m_scale = viewHeight / (firstPageSize.Height + 2 * (double)m_margins);
         break;
       case 2:
-        m_scale = (std::min)(viewWidth / (firstPageSize.Width + 2 * m_margins), viewHeight / (firstPageSize.Height + 2 * m_margins));
+        m_scale = (std::min)(viewWidth / (firstPageSize.Width + 2 * (double)m_margins), viewHeight / (firstPageSize.Height + 2 * (double)m_margins));
         break;
       default:
         break;
@@ -454,28 +469,23 @@ namespace winrt::RCTPdf::implementation
     // Render all visible pages - first the curent one, then the next visible ones and one
     // more, then the one before that might be partly visible, then one more before
     if (m_pages[page].needsRender()) {
-      SignalError("Rendering " + std::to_string(page + 1));
       co_await m_pages[page].render();
     }
     auto pageToRender = page + 1;
     while (pageToRender < (int)m_pages.size() &&
            m_pages[pageToRender].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd) > 0) {
       if (m_pages[pageToRender].needsRender()) {
-        SignalError("Rendering " + std::to_string(pageToRender + 1));
         co_await m_pages[pageToRender].render();
       }
       ++pageToRender;
     }
     if (pageToRender < (int)m_pages.size() && m_pages[pageToRender].needsRender()) {
-      SignalError("Rendering " + std::to_string(pageToRender + 1));
       co_await m_pages[pageToRender].render();
     }
     if (page >= 1 && m_pages[page - 1].needsRender()) {
-      SignalError("Rendering " + std::to_string(page));
       co_await m_pages[page - 1].render();
     }
     if (page >= 2 && m_pages[page - 2].needsRender()) {
-      SignalError("Rendering " + std::to_string(page -1));
       co_await m_pages[page - 2].render();
     }
     if (page != m_currentPage) {
@@ -501,10 +511,10 @@ namespace winrt::RCTPdf::implementation
       double targetVerticalOffset = PagesContainer().VerticalOffset() * rescale;
       if (newMargin != m_margins) {
         if (m_horizontal) {
-          targetVerticalOffset += m_currentPage * 2 *(newMargin - m_margins) * rescale;
+          targetVerticalOffset += (double)m_currentPage * 2 *(newMargin - m_margins) * rescale;
         }
         else {
-          targetHorizontalOffset += m_currentPage * 2 * (newMargin - m_margins) * rescale;
+          targetHorizontalOffset += (double)m_currentPage * 2 * (newMargin - m_margins) * rescale;
         }
       }
       m_scale = newScale;
